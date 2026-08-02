@@ -1,9 +1,19 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+} from 'react-router-dom'
+
 import { useAuth } from '../context/AuthContext'
 import NotificationBell from './NotificationBell'
 
 function Layout() {
   const { user, logout } = useAuth()
+  const location = useLocation()
+
+  const [isMenuOpen, setIsMenuOpen] =
+    useState(false)
 
   const studentMenu = [
     {
@@ -116,12 +126,80 @@ function Layout() {
     menuItems = parentMenu
   }
 
+  useEffect(() => {
+    setIsMenuOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    document.body.style.overflow =
+      isMenuOpen ? 'hidden' : ''
+
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isMenuOpen])
+
+  const handleLogout = () => {
+    setIsMenuOpen(false)
+    logout()
+  }
+
   return (
     <div className="app-layout">
-      <aside className="sidebar">
-        <h1 className="sidebar-logo">
+      <header className="mobile-topbar">
+        <button
+          type="button"
+          className="mobile-menu-button"
+          onClick={() =>
+            setIsMenuOpen((current) => !current)
+          }
+          aria-label={
+            isMenuOpen
+              ? 'Закрыть меню'
+              : 'Открыть меню'
+          }
+          aria-expanded={isMenuOpen}
+        >
+          {isMenuOpen ? '✕' : '☰'}
+        </button>
+
+        <h1 className="mobile-logo">
           Edu<span>Boost</span>
         </h1>
+
+        <NotificationBell />
+      </header>
+
+      {isMenuOpen && (
+        <button
+          type="button"
+          className="sidebar-overlay"
+          onClick={() => setIsMenuOpen(false)}
+          aria-label="Закрыть боковое меню"
+        />
+      )}
+
+      <aside
+        className={
+          isMenuOpen
+            ? 'sidebar sidebar-open'
+            : 'sidebar'
+        }
+      >
+        <div className="sidebar-header">
+          <h1 className="sidebar-logo">
+            Edu<span>Boost</span>
+          </h1>
+
+          <button
+            type="button"
+            className="sidebar-close-button"
+            onClick={() => setIsMenuOpen(false)}
+            aria-label="Закрыть меню"
+          >
+            ✕
+          </button>
+        </div>
 
         <nav className="sidebar-menu">
           {menuItems.map((item) => (
@@ -140,32 +218,34 @@ function Layout() {
           ))}
         </nav>
 
-        <div className="sidebar-user">
-          <div className="sidebar-avatar">
-            {user.name
-              .charAt(0)
-              .toUpperCase()}
+        <div className="sidebar-bottom">
+          <div className="sidebar-user">
+            <div className="sidebar-avatar">
+              {user.name
+                .charAt(0)
+                .toUpperCase()}
+            </div>
+
+            <div className="sidebar-user-info">
+              <strong>{user.name}</strong>
+
+              <p>
+                {user.role}
+                {user.className
+                  ? ` · ${user.className}`
+                  : ''}
+              </p>
+            </div>
           </div>
 
-          <div>
-            <strong>{user.name}</strong>
-
-            <p>
-              {user.role}
-              {user.className
-                ? ` · ${user.className}`
-                : ''}
-            </p>
-          </div>
+          <button
+            type="button"
+            className="sidebar-logout"
+            onClick={handleLogout}
+          >
+            🚪 Выйти
+          </button>
         </div>
-
-        <button
-          type="button"
-          className="sidebar-logout"
-          onClick={logout}
-        >
-          🚪 Выйти
-        </button>
       </aside>
 
       <main className="layout-content">

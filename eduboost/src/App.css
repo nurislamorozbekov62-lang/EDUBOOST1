@@ -3163,4 +3163,344 @@ button {
   .test-earned-rewards {
     flex-direction: column;
   }
+} 
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.app-layout {
+  min-height: 100vh;
+  background: #f4f5fb;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+
+  width: 280px;
+  height: 100vh;
+  padding: 24px 18px;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow-y: auto;
+
+  background: #15152f;
+  color: #ffffff;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-logo,
+.mobile-logo {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sidebar-logo {
+  padding: 8px 12px 24px;
+  font-size: 32px;
+}
+
+.sidebar-logo span,
+.mobile-logo span {
+  color: #52d5b1;
+}
+
+.sidebar-close-button {
+  display: none;
+}
+
+.sidebar-menu {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sidebar-link {
+  display: block;
+  width: 100%;
+  padding: 13px 15px;
+
+  border-radius: 14px;
+
+  color: #c9c9d6;
+  font-size: 16px;
+  line-height: 1.35;
+  text-decoration: none;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.sidebar-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-link.active {
+  color: #ffffff;
+  background: #5b57e8;
+}
+
+.sidebar-bottom {
+  margin-top: 20px;
+}
+
+.sidebar-user {
+  padding: 13px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-avatar {
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+
+  border-radius: 50%;
+  background: #5b57e8;
+
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sidebar-user-info {
+  min-width: 0;
+}
+
+.sidebar-user strong {
+  display: block;
+
+  overflow: hidden;
+
+  color: #ffffff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user p {
+  margin: 4px 0 0;
+
+  overflow: hidden;
+
+  color: #a9a9bb;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-logout {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+
+  border: 0;
+  border-radius: 14px;
+
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-logout:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.layout-content {
+  min-height: 100vh;
+  margin-left: 280px;
+  padding: 28px;
+}
+
+.layout-topbar {
+  margin-bottom: 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.layout-topbar strong,
+.layout-topbar span {
+  display: block;
+}
+
+.layout-topbar span {
+  margin-top: 3px;
+  color: #747487;
+  font-size: 14px;
+}
+
+.mobile-topbar {
+  display: none;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* Планшеты и телефоны */
+@media (max-width: 900px) {
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+
+    min-height: 62px;
+    padding: 8px 14px;
+
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    gap: 10px;
+
+    background: #15152f;
+    color: #ffffff;
+
+    box-shadow: 0 4px 14px
+      rgba(0, 0, 0, 0.16);
+  }
+
+  .mobile-logo {
+    font-size: 23px;
+    text-align: center;
+  }
+
+  .mobile-menu-button,
+  .sidebar-close-button {
+    width: 42px;
+    height: 42px;
+
+    border: 0;
+    border-radius: 12px;
+
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+
+    font-size: 22px;
+    cursor: pointer;
+  }
+
+  .sidebar {
+    width: min(86vw, 320px);
+    padding: 18px 14px;
+
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-button {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+  }
+
+  .sidebar-logo {
+    padding: 7px 8px 20px;
+    font-size: 28px;
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+
+    display: block;
+
+    border: 0;
+    background: rgba(0, 0, 0, 0.54);
+  }
+
+  .layout-content {
+    width: 100%;
+    margin-left: 0;
+    padding: 16px 12px 28px;
+  }
+
+  .layout-topbar {
+    display: none;
+  }
+
+  .sidebar-menu {
+    gap: 5px;
+  }
+
+  .sidebar-link {
+    padding: 12px 13px;
+    font-size: 15px;
+  }
+
+  .sidebar-user {
+    padding: 12px;
+  }
+}
+
+/* Маленькие телефоны */
+@media (max-width: 480px) {
+  .mobile-topbar {
+    grid-template-columns: 42px 1fr 42px;
+    min-height: 58px;
+    padding: 7px 10px;
+  }
+
+  .mobile-logo {
+    font-size: 21px;
+  }
+
+  .mobile-menu-button,
+  .sidebar-close-button {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+
+  .layout-content {
+    padding: 12px 10px 24px;
+  }
+
+  .sidebar {
+    width: 88vw;
+  }
+
+  .sidebar-link {
+    font-size: 15px;
+  }
 }
