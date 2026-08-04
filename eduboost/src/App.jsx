@@ -20,6 +20,7 @@ import CouponPage from './pages/CouponPage'
 import DashboardPage from './pages/DashboardPage'
 import LessonPage from './pages/LessonPage'
 import LoginPage from './pages/LoginPage'
+import MessagesPage from './pages/MessagesPage'
 import MyCouponsPage from './pages/MyCouponsPage'
 import NotificationsPage from './pages/NotificationsPage'
 import ParentDashboardPage from './pages/ParentDashboardPage'
@@ -118,6 +119,11 @@ function AppRoutes() {
           path="notifications"
           element={<NotificationsPage />}
         />
+<Route
+  path="messages"
+  element={<MessagesPage />}
+/>
+
 
         <Route
           path="my-journal"

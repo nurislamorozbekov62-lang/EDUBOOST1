@@ -1,229 +1,378 @@
-import { useEffect } from 'react'
+import {
+  Award,
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Coins,
+  Flame,
+  GraduationCap,
+  MessageCircle,
+  Star,
+  Target,
+  Trophy,
+} from 'lucide-react'
+
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getLevelByXp } from '../data/levels'
 
 function DashboardPage() {
-  const {
-    user,
-    updateUser,
-    refreshUser,
-  } = useAuth()
+  const { user } = useAuth()
 
-  useEffect(() => {
-    refreshUser()
-  }, [])
+  const userName =
+    user?.name || 'Пользователь'
 
-  const level = getLevelByXp(user.xp)
+  const points =
+    Number(user?.points) || 2540
 
-  function buyFreeze() {
-    const points = Number(user.points || 0)
-    const freezes = Number(
-      user.freezes || 0,
-    )
+  const xp =
+    Number(user?.xp) || 1460
 
-    if (freezes >= 2) {
-      alert(
-        'Можно хранить максимум две заморозки',
-      )
-      return
-    }
+  const streak =
+    Number(user?.streak) || 7
 
-    if (points < 100) {
-      alert(
-        'Для покупки нужно 100 баллов',
-      )
-      return
-    }
+  const level =
+    Number(user?.level) || 12
 
-    const confirmed = window.confirm(
-      'Купить заморозку серии за 100 баллов?',
-    )
+  const nextLevelXp = 2500
 
-    if (!confirmed) {
-      return
-    }
+  const progressPercent = Math.min(
+    Math.round((xp / nextLevelXp) * 100),
+    100
+  )
 
-    updateUser({
-      points: points - 100,
-      freezes: freezes + 1,
-    })
-  }
+  const statistics = [
+    {
+      id: 'points',
+      title: points.toLocaleString('ru-RU'),
+      subtitle: 'Баллов',
+      icon: Coins,
+      colorClass: 'dashboard-stat-icon--orange',
+    },
+    {
+      id: 'level',
+      title: level,
+      subtitle: 'Уровень',
+      icon: Trophy,
+      colorClass: 'dashboard-stat-icon--blue',
+    },
+    {
+      id: 'streak',
+      title: streak,
+      subtitle: 'Дней подряд',
+      icon: Flame,
+      colorClass: 'dashboard-stat-icon--green',
+    },
+    {
+      id: 'achievements',
+      title: 8,
+      subtitle: 'Достижений',
+      icon: Award,
+      colorClass: 'dashboard-stat-icon--purple',
+    },
+  ]
+
+  const quickActions = [
+    {
+      id: 'tasks',
+      title: 'Мои задания',
+      subtitle: '3 активных задания',
+      path: '/tasks',
+      icon: ClipboardList,
+    },
+    {
+      id: 'schedule',
+      title: 'Расписание',
+      subtitle: '5 уроков сегодня',
+      path: '/schedule',
+      icon: CalendarDays,
+    },
+    {
+      id: 'courses',
+      title: 'Учебные курсы',
+      subtitle: 'Продолжить обучение',
+      path: '/courses',
+      icon: BookOpen,
+    },
+    {
+      id: 'journal',
+      title: 'Успеваемость',
+      subtitle: 'Средний балл 4.7',
+      path: '/my-journal',
+      icon: GraduationCap,
+    },
+  ]
+
+  const upcomingTasks = [
+    {
+      id: 'math',
+      subject: 'Математика',
+      title: 'Квадратные уравнения',
+      deadline: 'Сегодня, 18:00',
+      status: 'В процессе',
+      icon: Target,
+    },
+    {
+      id: 'russian',
+      subject: 'Русский язык',
+      title: 'Сочинение «Мой любимый герой»',
+      deadline: 'Завтра, 15:00',
+      status: 'Не начато',
+      icon: BookOpen,
+    },
+    {
+      id: 'chemistry',
+      subject: 'Химия',
+      title: 'Химические реакции',
+      deadline: '12 августа',
+      status: 'В процессе',
+      icon: Star,
+    },
+  ]
 
   return (
-    <div className="page-container">
-      <header className="page-header">
-        <div>
-          <h1>Главная</h1>
-
-          <p>
-            Образовательная платформа нового
-            поколения
-          </p>
-        </div>
-      </header>
-
-      <section className="welcome-card">
-        <div>
-          <h2>
-            Добро пожаловать, {user.name}!
-          </h2>
-
-          <p>
-            {user.role}
-            {user.className
-              ? ` · ${user.className}`
-              : ''}
+    <div className="dashboard-page">
+      <section className="dashboard-welcome">
+        <div className="dashboard-welcome-content">
+          <p className="dashboard-welcome-label">
+            Добро пожаловать
           </p>
 
-          {user.role === 'Ученик' && (
-            <div className="welcome-level">
-              {level.icon} Уровень:{' '}
-              <strong>{level.name}</strong>
+          <h1>Привет, {userName}!</h1>
+
+          <p>
+            Продолжай учиться, выполняй задания и
+            получай награды за свои успехи.
+          </p>
+
+          <div className="dashboard-level">
+            <div className="dashboard-level-badge">
+              {level}
             </div>
-          )}
-        </div>
 
-        {user.role === 'Ученик' && (
-          <div className="streak-circle">
-            <strong>{user.streak || 0}</strong>
-            <span>дней 🔥</span>
-          </div>
-        )}
-      </section>
-
-      {user.role === 'Ученик' && (
-        <>
-          <section className="stats-grid">
-            <div className="stat-card">
-              <span>⭐</span>
-
+            <div className="dashboard-level-info">
               <strong>
-                {Number(user.points || 0)}
+                Уровень «Отличник»
               </strong>
 
-              <p>Баллов</p>
-            </div>
-
-            <div className="stat-card">
-              <span>⚡</span>
-
-              <strong>
-                {Number(user.xp || 0)}
-              </strong>
-
-              <p>Опыта</p>
-            </div>
-
-            <div className="stat-card">
-              <span>🔥</span>
-
-              <strong>
-                {Number(user.streak || 0)}
-              </strong>
-
-              <p>Серия</p>
-            </div>
-
-            <div className="stat-card">
-              <span>🧊</span>
-
-              <strong>
-                {Number(user.freezes || 0)}
-              </strong>
-
-              <p>Заморозки</p>
-            </div>
-          </section>
-
-          <section className="content-card freeze-card">
-            <div className="freeze-information">
-              <div className="freeze-icon">
-                🧊
+              <div className="dashboard-progress">
+                <span
+                  style={{
+                    width: `${progressPercent}%`,
+                  }}
+                />
               </div>
 
-              <div>
-                <h2>Заморозка серии</h2>
-
-                <p>
-                  Она автоматически спасёт
-                  серию, если вы пропустите
-                  обязательное задание.
-                </p>
-
-                <span>
-                  Можно хранить максимум две
-                  заморозки.
-                </span>
-              </div>
-            </div>
-
-            <div className="freeze-purchase">
-              <strong>100 баллов</strong>
-
-              <button
-                className="primary-small-button"
-                onClick={buyFreeze}
-                disabled={
-                  Number(user.freezes || 0) >=
-                  2
-                }
+              <p
+                style={{
+                  marginTop: '7px',
+                  fontSize: '12px',
+                }}
               >
-                {Number(user.freezes || 0) >=
-                2
-                  ? 'Максимум куплен'
-                  : 'Купить заморозку'}
-              </button>
+                {xp.toLocaleString('ru-RU')} из{' '}
+                {nextLevelXp.toLocaleString('ru-RU')}{' '}
+                XP
+              </p>
             </div>
-          </section>
-        </>
-      )}
-
-      {user.role === 'Учитель' && (
-        <section className="stats-grid">
-          <div className="stat-card">
-            <span>🏫</span>
-            <strong>6</strong>
-            <p>Классов</p>
-          </div>
-
-          <div className="stat-card">
-            <span>👨‍🎓</span>
-            <strong>0</strong>
-            <p>Учеников</p>
-          </div>
-
-          <div className="stat-card">
-            <span>📝</span>
-            <strong>0</strong>
-            <p>Заданий</p>
-          </div>
-
-          <div className="stat-card">
-            <span>⏳</span>
-            <strong>0</strong>
-            <p>На проверке</p>
-          </div>
-        </section>
-      )}
-
-      <section className="content-card">
-        <h2>Последняя активность</h2>
-
-        <div className="activity-item">
-          <span>📝</span>
-
-          <div>
-            <strong>
-              Система кабинета работает
-            </strong>
-
-            <p>
-              Выполняйте задания, зарабатывайте
-              опыт и поднимайтесь в рейтинге.
-            </p>
           </div>
         </div>
       </section>
+
+      <section className="dashboard-stats">
+        {statistics.map((item) => {
+          const Icon = item.icon
+
+          return (
+            <article
+              key={item.id}
+              className="dashboard-stat-card"
+            >
+              <div
+                className={`dashboard-stat-icon ${item.colorClass}`}
+              >
+                <Icon size={22} />
+              </div>
+
+              <div className="dashboard-stat-content">
+                <strong>{item.title}</strong>
+                <span>{item.subtitle}</span>
+              </div>
+            </article>
+          )
+        })}
+      </section>
+
+      <section>
+        <div className="dashboard-section-header">
+          <h2>Быстрый доступ</h2>
+
+          <Link to="/profile">
+            Профиль
+          </Link>
+        </div>
+
+        <div className="dashboard-quick-grid">
+          {quickActions.map((action) => {
+            const Icon = action.icon
+
+            return (
+              <Link
+                key={action.id}
+                to={action.path}
+                className="dashboard-quick-card"
+              >
+                <div className="dashboard-quick-icon">
+                  <Icon size={22} />
+                </div>
+
+                <div
+                  style={{
+                    minWidth: 0,
+                    flex: 1,
+                  }}
+                >
+                  <strong>{action.title}</strong>
+                  <span>{action.subtitle}</span>
+                </div>
+
+                <ChevronRight
+                  size={18}
+                  color="#94a3b8"
+                />
+              </Link>
+            )
+          })}
+        </div>
+      </section>
+
+      <section>
+        <div className="dashboard-section-header">
+          <h2>Ближайшие задания</h2>
+
+          <Link to="/tasks">
+            Смотреть все
+          </Link>
+        </div>
+
+        <div className="dashboard-task-list">
+          {upcomingTasks.map((task) => {
+            const Icon = task.icon
+
+            return (
+              <Link
+                key={task.id}
+                to="/tasks"
+                className="dashboard-task-item"
+              >
+                <div className="dashboard-task-marker">
+                  <Icon size={21} />
+                </div>
+
+                <div className="dashboard-task-content">
+                  <strong>{task.subject}</strong>
+
+                  <span>{task.title}</span>
+
+                  <span
+                    style={{
+                      marginTop: '5px',
+                      fontSize: '11px',
+                    }}
+                  >
+                    {task.deadline}
+                  </span>
+                </div>
+
+                <div className="dashboard-task-status">
+                  {task.status}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      </section>
+
+      <section>
+        <div className="dashboard-section-header">
+          <h2>Твой прогресс</h2>
+        </div>
+
+        <div className="content-card">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+            }}
+          >
+            <div className="dashboard-quick-icon">
+              <CheckCircle2 size={23} />
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+              }}
+            >
+              <strong>
+                Отличный результат!
+              </strong>
+
+              <p
+                style={{
+                  margin: '5px 0 0',
+                  color: '#718096',
+                  fontSize: '13px',
+                  lineHeight: 1.5,
+                }}
+              >
+                За эту неделю ты выполнил 4 задания
+                и получил 120 баллов.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Link
+        to="/notifications"
+        className="content-card"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+        }}
+      >
+        <div className="dashboard-quick-icon">
+          <MessageCircle size={23} />
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+          }}
+        >
+          <strong>
+            Новые сообщения
+          </strong>
+
+          <p
+            style={{
+              margin: '5px 0 0',
+              color: '#718096',
+              fontSize: '13px',
+            }}
+          >
+            У тебя есть непрочитанные уведомления
+          </p>
+        </div>
+
+        <ChevronRight
+          size={20}
+          color="#94a3b8"
+        />
+      </Link>
     </div>
   )
 }

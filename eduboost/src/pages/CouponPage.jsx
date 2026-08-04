@@ -4,35 +4,631 @@ import {
   useParams,
 } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
+import {
+  ArrowLeft,
+  Ban,
+  CheckCircle2,
+  Clock3,
+  Coins,
+  Gift,
+  MapPin,
+  QrCode,
+  RefreshCcw,
+  ShieldCheck,
+  ShoppingBag,
+  Store,
+  Ticket,
+  XCircle,
+} from 'lucide-react'
 
 import {
   cancelCoupon,
   getCouponById,
 } from '../services/partnerService'
 
-function formatRemainingTime(expiresAt) {
-  const expiresTimestamp = new Date(expiresAt).getTime()
-  const remainingMilliseconds =
-    expiresTimestamp - Date.now()
+function CouponPage() {
+  const { couponId } = useParams()
+  const navigate = useNavigate()
 
-  if (
-    Number.isNaN(expiresTimestamp) ||
-    remainingMilliseconds <= 0
-  ) {
+  const [coupon, setCoupon] = useState(null)
+  const [remainingTime, setRemainingTime] =
+    useState('00:00')
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] =
+    useState(true)
+  const [isCancelling, setIsCancelling] =
+    useState(false)
+
+  function loadCoupon() {
+    try {
+      const foundCoupon =
+        getCouponById(couponId)
+
+      setCoupon(foundCoupon || null)
+      setError('')
+
+      if (
+        foundCoupon?.status === 'active' &&
+        foundCoupon?.expiresAt
+      ) {
+        setRemainingTime(
+          formatRemainingTime(
+            foundCoupon.expiresAt,
+          ),
+        )
+      } else {
+        setRemainingTime('00:00')
+      }
+    } catch (loadError) {
+      setCoupon(null)
+
+      setError(
+        loadError.message ||
+          'Не удалось загрузить купон',
+      )
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadCoupon()
+
+    const intervalId =
+      window.setInterval(() => {
+        loadCoupon()
+      }, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [couponId])
+
+  function handleCancel() {
+    setError('')
+
+    if (!coupon) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Отменить купон и вернуть потраченные баллы?',
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setIsCancelling(true)
+
+      cancelCoupon(coupon.id)
+      loadCoupon()
+    } catch (cancelError) {
+      setError(
+        cancelError.message ||
+          'Не удалось отменить купон',
+      )
+    } finally {
+      setIsCancelling(false)
+    }
+  }
+
+  if (isLoading) {
+    return <CouponLoading />
+  }
+
+  if (!coupon) {
+    return (
+      <CouponNotFound
+        error={error}
+        onBack={() =>
+          navigate('/my-coupons')
+        }
+      />
+    )
+  }
+
+  const statusData =
+    getCouponStatusData(coupon.status)
+
+  const StatusIcon = statusData.icon
+
+  const isActive =
+    coupon.status === 'active'
+
+  return (
+    <div className="coupon-details-page">
+      <button
+        type="button"
+        className="coupon-details-back"
+        onClick={() =>
+          navigate('/my-coupons')
+        }
+      >
+        <ArrowLeft size={18} />
+        Мои купоны
+      </button>
+
+      {error && (
+        <div className="coupon-details-alert">
+          <XCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <header className="coupon-details-header">
+        <div className="coupon-details-header-icon">
+          <Ticket size={28} />
+        </div>
+
+        <div>
+          <p>Партнёрская награда</p>
+
+          <h1>
+            {coupon.offerTitle ||
+              'Купон EduBoost'}
+          </h1>
+
+          <span>
+            Покажите QR-код сотруднику
+            партнёра для получения награды.
+          </span>
+        </div>
+      </header>
+
+      <section
+        className={`coupon-details-card coupon-details-card--${coupon.status}`}
+      >
+        <div className="coupon-details-top">
+          <div>
+            <div className="coupon-details-partner">
+              <Store size={16} />
+
+              {coupon.partnerName ||
+                'Партнёр EduBoost'}
+            </div>
+
+            <h2>
+              {coupon.offerTitle ||
+                'Партнёрская награда'}
+            </h2>
+          </div>
+
+          <div
+            className={`coupon-details-status coupon-details-status--${coupon.status}`}
+          >
+            <StatusIcon size={16} />
+            {statusData.label}
+          </div>
+        </div>
+
+        {isActive ? (
+          <ActiveCoupon
+            coupon={coupon}
+            remainingTime={remainingTime}
+            isCancelling={isCancelling}
+            onCancel={handleCancel}
+          />
+        ) : (
+          <InactiveCoupon
+            coupon={coupon}
+            statusData={statusData}
+            onCatalogClick={() =>
+              navigate('/partner-rewards')
+            }
+          />
+        )}
+      </section>
+    </div>
+  )
+}
+
+function ActiveCoupon({
+  coupon,
+  remainingTime,
+  isCancelling,
+  onCancel,
+}) {
+  const qrValue =
+    coupon.token ||
+    coupon.code ||
+    coupon.id
+
+  const isTimeCritical =
+    getRemainingSeconds(
+      coupon.expiresAt,
+    ) <= 60
+
+  return (
+    <div className="coupon-active-layout">
+      <div className="coupon-qr-column">
+        <div className="coupon-qr-label">
+          <ShieldCheck size={16} />
+          Защищённый QR-код
+        </div>
+
+        <div className="coupon-qr-wrapper">
+          <QRCodeSVG
+            value={String(qrValue)}
+            size={230}
+            level="H"
+            includeMargin
+          />
+        </div>
+
+        <div
+          className={
+            isTimeCritical
+              ? 'coupon-timer coupon-timer--critical'
+              : 'coupon-timer'
+          }
+        >
+          <Clock3 size={20} />
+
+          <span>
+            <small>
+              Осталось времени
+            </small>
+
+            <strong>
+              {remainingTime}
+            </strong>
+          </span>
+        </div>
+
+        <p className="coupon-qr-help">
+          QR-код перестанет действовать
+          после использования или
+          завершения таймера.
+        </p>
+      </div>
+
+      <div className="coupon-information-column">
+        <div className="coupon-code-card">
+          <div>
+            <QrCode size={19} />
+          </div>
+
+          <span>
+            <small>Код купона</small>
+
+            <strong>
+              {coupon.token ||
+                coupon.code ||
+                coupon.id ||
+                'Код не сформирован'}
+            </strong>
+          </span>
+        </div>
+
+        <div className="coupon-details-grid">
+          {coupon.rewardType ===
+          'discount' ? (
+            <CouponInfo
+              icon={Ticket}
+              label="Размер скидки"
+              value={`${Number(
+                coupon.discountPercent ||
+                  0,
+              )}%`}
+            />
+          ) : (
+            <CouponInfo
+              icon={Gift}
+              label="Подарок"
+              value={
+                coupon.giftName ||
+                coupon.offerTitle ||
+                'Подарок'
+              }
+            />
+          )}
+
+          <CouponInfo
+            icon={Coins}
+            label="Потрачено"
+            value={`${Number(
+              coupon.pointsSpent || 0,
+            ).toLocaleString(
+              'ru-RU',
+            )} баллов`}
+          />
+
+          {Number(
+            coupon.minimumPurchase || 0,
+          ) > 0 && (
+            <CouponInfo
+              icon={ShoppingBag}
+              label="Минимальная покупка"
+              value={`${Number(
+                coupon.minimumPurchase,
+              ).toLocaleString(
+                'ru-RU',
+              )} сом`}
+            />
+          )}
+
+          {(coupon.city ||
+            coupon.address) && (
+            <CouponInfo
+              icon={MapPin}
+              label="Адрес"
+              value={[
+                coupon.city,
+                coupon.address,
+              ]
+                .filter(Boolean)
+                .join(', ')}
+            />
+          )}
+        </div>
+
+        <div className="coupon-instruction">
+          <div>
+            <CheckCircle2 size={22} />
+          </div>
+
+          <span>
+            <strong>
+              Как использовать купон
+            </strong>
+
+            <p>
+              Покажите QR-код сотруднику
+              партнёра. После подтверждения
+              статус купона изменится на
+              «Использован».
+            </p>
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="coupon-cancel-button"
+          disabled={isCancelling}
+          onClick={onCancel}
+        >
+          {isCancelling ? (
+            <RefreshCcw size={18} />
+          ) : (
+            <Ban size={18} />
+          )}
+
+          {isCancelling
+            ? 'Отменяем...'
+            : 'Отменить и вернуть баллы'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function InactiveCoupon({
+  coupon,
+  statusData,
+  onCatalogClick,
+}) {
+  const StatusIcon = statusData.icon
+
+  return (
+    <div className="coupon-inactive-state">
+      <div
+        className={`coupon-inactive-icon coupon-inactive-icon--${coupon.status}`}
+      >
+        <StatusIcon size={36} />
+      </div>
+
+      <h2>{statusData.label}</h2>
+
+      <p>{statusData.description}</p>
+
+      <div className="coupon-inactive-info">
+        {coupon.status === 'used' && (
+          <CouponInfo
+            icon={CheckCircle2}
+            label="Использован"
+            value={formatDate(
+              coupon.usedAt,
+            )}
+          />
+        )}
+
+        {coupon.status ===
+          'cancelled' && (
+          <CouponInfo
+            icon={Ban}
+            label="Отменён"
+            value={formatDate(
+              coupon.cancelledAt,
+            )}
+          />
+        )}
+
+        {coupon.status ===
+          'expired' && (
+          <CouponInfo
+            icon={Clock3}
+            label="Срок завершён"
+            value={formatDate(
+              coupon.expiresAt,
+            )}
+          />
+        )}
+
+        <CouponInfo
+          icon={Coins}
+          label="Потрачено"
+          value={`${Number(
+            coupon.pointsSpent || 0,
+          ).toLocaleString(
+            'ru-RU',
+          )} баллов`}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={onCatalogClick}
+      >
+        <Gift size={18} />
+        Открыть каталог наград
+      </button>
+    </div>
+  )
+}
+
+function CouponInfo({
+  icon: Icon,
+  label,
+  value,
+}) {
+  if (!value) {
+    return null
+  }
+
+  return (
+    <div className="coupon-info-card">
+      <div>
+        <Icon size={18} />
+      </div>
+
+      <span>
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </span>
+    </div>
+  )
+}
+
+function CouponLoading() {
+  return (
+    <div className="coupon-details-page">
+      <div className="coupon-loading-card">
+        <RefreshCcw size={30} />
+        <h1>Загрузка купона...</h1>
+      </div>
+    </div>
+  )
+}
+
+function CouponNotFound({
+  error,
+  onBack,
+}) {
+  return (
+    <div className="coupon-details-page">
+      <div className="coupon-not-found">
+        <div>
+          <XCircle size={34} />
+        </div>
+
+        <h1>Купон не найден</h1>
+
+        <p>
+          {error ||
+            'Возможно, купон был удалён или его адрес указан неправильно.'}
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+        >
+          <ArrowLeft size={18} />
+          Перейти к моим купонам
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function getCouponStatusData(status) {
+  if (status === 'active') {
+    return {
+      label: 'Активный',
+      description:
+        'Купон готов к использованию.',
+      icon: Clock3,
+    }
+  }
+
+  if (status === 'used') {
+    return {
+      label: 'Уже использован',
+      description:
+        'Награда по этому купону уже была получена.',
+      icon: CheckCircle2,
+    }
+  }
+
+  if (status === 'expired') {
+    return {
+      label: 'Срок действия истёк',
+      description:
+        'QR-код больше не действует.',
+      icon: Clock3,
+    }
+  }
+
+  if (status === 'cancelled') {
+    return {
+      label: 'Купон отменён',
+      description:
+        'Потраченные баллы были возвращены.',
+      icon: Ban,
+    }
+  }
+
+  return {
+    label: 'Неизвестный статус',
+    description:
+      'Не удалось определить состояние купона.',
+    icon: XCircle,
+  }
+}
+
+function formatRemainingTime(expiresAt) {
+  const totalSeconds =
+    getRemainingSeconds(expiresAt)
+
+  if (totalSeconds <= 0) {
     return '00:00'
   }
 
-  const totalSeconds = Math.floor(
-    remainingMilliseconds / 1000
+  const minutes = Math.floor(
+    totalSeconds / 60,
   )
 
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
+  const seconds =
+    totalSeconds % 60
 
   return `${String(minutes).padStart(
     2,
-    '0'
-  )}:${String(seconds).padStart(2, '0')}`
+    '0',
+  )}:${String(seconds).padStart(
+    2,
+    '0',
+  )}`
+}
+
+function getRemainingSeconds(expiresAt) {
+  const expiresTimestamp =
+    new Date(expiresAt).getTime()
+
+  if (
+    Number.isNaN(expiresTimestamp)
+  ) {
+    return 0
+  }
+
+  return Math.max(
+    Math.floor(
+      (expiresTimestamp -
+        Date.now()) /
+        1000,
+    ),
+    0,
+  )
 }
 
 function formatDate(dateValue) {
@@ -46,371 +642,15 @@ function formatDate(dateValue) {
     return 'Дата не указана'
   }
 
-  return date.toLocaleString('ru-RU')
-}
-
-function CouponPage() {
-  const { couponId } = useParams()
-  const navigate = useNavigate()
-
-  const [coupon, setCoupon] = useState(null)
-  const [remainingTime, setRemainingTime] =
-    useState('00:00')
-  const [error, setError] = useState('')
-  const [isLoading, setIsLoading] =
-    useState(true)
-
-  const loadCoupon = () => {
-    try {
-      const foundCoupon = getCouponById(couponId)
-
-      setCoupon(foundCoupon)
-
-      if (foundCoupon?.expiresAt) {
-        setRemainingTime(
-          formatRemainingTime(foundCoupon.expiresAt)
-        )
-      } else {
-        setRemainingTime('00:00')
-      }
-    } catch (loadError) {
-      console.error(
-        'Ошибка загрузки купона:',
-        loadError
-      )
-
-      setError(
-        loadError.message ||
-          'Не удалось загрузить купон'
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadCoupon()
-
-    const intervalId = window.setInterval(() => {
-      loadCoupon()
-    }, 1000)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [couponId])
-
-  const handleCancel = () => {
-    setError('')
-
-    if (!coupon) {
-      return
-    }
-
-    const confirmed = window.confirm(
-      'Отменить купон и вернуть потраченные баллы?'
-    )
-
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      cancelCoupon(coupon.id)
-      loadCoupon()
-    } catch (cancelError) {
-      console.error(
-        'Ошибка отмены купона:',
-        cancelError
-      )
-
-      setError(
-        cancelError.message ||
-          'Не удалось отменить купон'
-      )
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="page-container">
-        <div className="content-card">
-          <h1>Загрузка купона...</h1>
-        </div>
-      </div>
-    )
-  }
-
-  if (!coupon) {
-    return (
-      <div className="page-container">
-        <div className="content-card">
-          <h1>Купон не найден</h1>
-
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() =>
-              navigate('/my-coupons')
-            }
-          >
-            Перейти к моим купонам
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const isActive =
-    coupon.status === 'active'
-
-  const statusText =
+  return date.toLocaleString(
+    'ru-RU',
     {
-      active: 'Активный',
-      used: 'Уже использован',
-      expired: 'Срок действия истёк',
-      cancelled: 'Отменён',
-    }[coupon.status] || 'Неизвестный статус'
-
-  const statusBackground =
-    coupon.status === 'active'
-      ? '#dcfce7'
-      : coupon.status === 'used'
-        ? '#dbeafe'
-        : coupon.status === 'expired'
-          ? '#fef3c7'
-          : '#f3f4f6'
-
-  const statusColor =
-    coupon.status === 'active'
-      ? '#166534'
-      : coupon.status === 'used'
-        ? '#1d4ed8'
-        : coupon.status === 'expired'
-          ? '#92400e'
-          : '#374151'
-
-  return (
-    <div className="page-container">
-      <button
-        type="button"
-        className="secondary-button"
-        onClick={() =>
-          navigate('/my-coupons')
-        }
-        style={{
-          marginBottom: '16px',
-        }}
-      >
-        ← Мои купоны
-      </button>
-
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-
-      <div
-        className="content-card"
-        style={{
-          maxWidth: '620px',
-          margin: '0 auto',
-          textAlign: 'center',
-        }}
-      >
-        <p
-          style={{
-            marginBottom: '8px',
-            color: '#6b7280',
-          }}
-        >
-          {coupon.partnerName ||
-            'Партнёр не указан'}
-        </p>
-
-        <h1>{coupon.offerTitle}</h1>
-
-        <div
-          style={{
-            display: 'inline-block',
-            marginBottom: '20px',
-            padding: '8px 14px',
-            borderRadius: '999px',
-            background: statusBackground,
-            color: statusColor,
-          }}
-        >
-          {statusText}
-        </div>
-
-        {isActive ? (
-          <>
-            <div
-              style={{
-                display: 'inline-block',
-                padding: '20px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '18px',
-                background: '#ffffff',
-              }}
-            >
-              <QRCodeSVG
-                value={coupon.token || coupon.id}
-                size={240}
-                level="H"
-                includeMargin
-              />
-            </div>
-
-            <h2
-              style={{
-                marginTop: '20px',
-              }}
-            >
-              Осталось: {remainingTime}
-            </h2>
-
-            <p
-              style={{
-                color: '#6b7280',
-              }}
-            >
-              Покажите этот QR-код сотруднику
-              партнёра. После подтверждения он
-              перестанет действовать.
-            </p>
-
-            <div
-              style={{
-                margin: '16px 0',
-                padding: '12px',
-                borderRadius: '12px',
-                background: '#f9fafb',
-                wordBreak: 'break-all',
-              }}
-            >
-              <small>Код купона</small>
-
-              <br />
-
-              <strong>
-                {coupon.token ||
-                  'Код не сформирован'}
-              </strong>
-            </div>
-
-            {coupon.rewardType ===
-            'discount' ? (
-              <p>
-                Скидка:{' '}
-                <strong>
-                  {Number(
-                    coupon.discountPercent
-                  ) || 0}
-                  %
-                </strong>
-              </p>
-            ) : (
-              <p>
-                Подарок:{' '}
-                <strong>
-                  {coupon.giftName ||
-                    'Подарок не указан'}
-                </strong>
-              </p>
-            )}
-
-            {Number(coupon.minimumPurchase) >
-              0 && (
-              <p>
-                Минимальная покупка:{' '}
-                <strong>
-                  {coupon.minimumPurchase} сом
-                </strong>
-              </p>
-            )}
-
-            <p>
-              Потрачено:{' '}
-              <strong>
-                {Number(coupon.pointsSpent) || 0}{' '}
-                баллов
-              </strong>
-            </p>
-
-            <button
-              type="button"
-              className="danger-button"
-              onClick={handleCancel}
-            >
-              Отменить и вернуть баллы
-            </button>
-          </>
-        ) : (
-          <div
-            style={{
-              padding: '28px',
-              borderRadius: '16px',
-              background: '#f9fafb',
-            }}
-          >
-            <h2>{statusText}</h2>
-
-            {coupon.status === 'used' && (
-              <p>
-                Использован:{' '}
-                <strong>
-                  {formatDate(coupon.usedAt)}
-                </strong>
-              </p>
-            )}
-
-            {coupon.status ===
-              'cancelled' && (
-              <p>
-                Отменён:{' '}
-                <strong>
-                  {formatDate(
-                    coupon.cancelledAt
-                  )}
-                </strong>
-              </p>
-            )}
-
-            {coupon.status ===
-              'expired' && (
-              <>
-                <p>
-                  Срок действия купона завершился.
-                </p>
-
-                <p>
-                  Баллы за автоматически истёкший
-                  купон пока не возвращаются.
-                </p>
-              </>
-            )}
-
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() =>
-                navigate('/partner-rewards')
-              }
-            >
-              Открыть каталог наград
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    },
   )
 }
 

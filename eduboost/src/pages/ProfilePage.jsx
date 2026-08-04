@@ -1,37 +1,71 @@
-import {
-  getStudentCode,
-} from '../services/parentService'
 import { useMemo } from 'react'
+import {
+  Award,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  Coins,
+  Copy,
+  Flame,
+  Frame,
+  GraduationCap,
+  LockKeyhole,
+  Mail,
+  Medal,
+  Palette,
+  School,
+  ShieldCheck,
+  Snowflake,
+  Sparkles,
+  Star,
+  Trophy,
+  UserRound,
+  Zap,
+} from 'lucide-react'
+
 import { useAuth } from '../context/AuthContext'
 import { getLevelByXp } from '../data/levels'
+
 import {
   achievements,
   getUnlockedAchievements,
 } from '../data/achievements'
 
+import {
+  getStudentCode,
+} from '../services/parentService'
+
 function ProfilePage() {
   const { user, updateUser } = useAuth()
 
-  const level = getLevelByXp(user.xp)
+  const ownedRewards = useMemo(
+    () => user?.ownedRewards || [],
+    [user?.ownedRewards],
+  )
+
+  if (!user) {
+    return null
+  }
+
+  const level = getLevelByXp(
+    Number(user.xp || 0),
+  )
 
   const unlockedAchievements =
     getUnlockedAchievements(user)
-
-  const ownedRewards = useMemo(
-    () => user.ownedRewards || [],
-    [user.ownedRewards],
-  )
 
   const availableFrames = [
     {
       id: 'default',
       name: 'Обычная рамка',
+      description: 'Классический стиль',
       className: 'profile-frame-default',
       owned: true,
     },
     {
       id: 'blue-frame',
       name: 'Синяя рамка',
+      description: 'Яркий синий контур',
       className: 'profile-frame-blue',
       owned: ownedRewards.includes(
         'blue-frame',
@@ -40,6 +74,7 @@ function ProfilePage() {
     {
       id: 'gold-frame',
       name: 'Золотая рамка',
+      description: 'Рамка для лучших',
       className: 'profile-frame-gold',
       owned: ownedRewards.includes(
         'gold-frame',
@@ -50,14 +85,18 @@ function ProfilePage() {
   const availableBackgrounds = [
     {
       id: 'default',
-      name: 'Обычный фон',
-      className: 'profile-background-default',
+      name: 'Синий фон',
+      description: 'Стандартное оформление',
+      className:
+        'profile-background-default',
       owned: true,
     },
     {
       id: 'profile-background',
       name: 'Фиолетовый фон',
-      className: 'profile-background-purple',
+      description: 'Премиальный градиент',
+      className:
+        'profile-background-purple',
       owned: ownedRewards.includes(
         'profile-background',
       ),
@@ -72,7 +111,8 @@ function ProfilePage() {
 
   const currentFrame =
     availableFrames.find(
-      (frame) => frame.id === activeFrame,
+      (frame) =>
+        frame.id === activeFrame,
     ) || availableFrames[0]
 
   const currentBackground =
@@ -81,9 +121,18 @@ function ProfilePage() {
         background.id === activeBackground,
     ) || availableBackgrounds[0]
 
+  const achievementProgress =
+    achievements.length > 0
+      ? Math.round(
+          (unlockedAchievements.length /
+            achievements.length) *
+            100,
+        )
+      : 0
+
   function selectFrame(frame) {
     if (!frame.owned) {
-      alert(
+      window.alert(
         'Сначала купите эту рамку в магазине наград',
       )
       return
@@ -96,7 +145,7 @@ function ProfilePage() {
 
   function selectBackground(background) {
     if (!background.owned) {
-      alert(
+      window.alert(
         'Сначала купите этот фон в магазине наград',
       )
       return
@@ -107,333 +156,664 @@ function ProfilePage() {
     })
   }
 
+  async function copyStudentCode() {
+    const code = getStudentCode(user)
+
+    try {
+      await navigator.clipboard.writeText(
+        code,
+      )
+
+      window.alert(
+        'Код для родителя скопирован',
+      )
+    } catch {
+      window.alert(
+        `Код для родителя: ${code}`,
+      )
+    }
+  }
+
   return (
-    <div className="page-container">
-      <header className="page-header">
-        <div>
-          <h1>Мой профиль</h1>
+    <div className="modern-profile-page">
+      <ProfileHeader />
 
-          <p>
-            Статистика, достижения и оформление
-            профиля
-          </p>
-        </div>
-      </header>
+      <ProfileHero
+        user={user}
+        level={level}
+        currentFrame={currentFrame}
+        currentBackground={
+          currentBackground
+        }
+      />
 
-      <section
-        className={`profile-hero ${currentBackground.className}`}
-      >
+      <ProfileStats
+        user={user}
+        achievementsCount={
+          unlockedAchievements.length
+        }
+      />
+
+      <section className="modern-profile-content-grid">
+        <ProfileCustomization
+          user={user}
+          availableFrames={availableFrames}
+          availableBackgrounds={
+            availableBackgrounds
+          }
+          activeFrame={activeFrame}
+          activeBackground={
+            activeBackground
+          }
+          selectFrame={selectFrame}
+          selectBackground={
+            selectBackground
+          }
+        />
+
+        <ProfileAchievements
+          unlockedAchievements={
+            unlockedAchievements
+          }
+          achievementProgress={
+            achievementProgress
+          }
+        />
+      </section>
+
+      <ProfileAccountDetails
+        user={user}
+        copyStudentCode={copyStudentCode}
+      />
+    </div>
+  )
+}
+
+function ProfileHeader() {
+  return (
+    <header className="modern-profile-header">
+      <div className="modern-profile-header-icon">
+        <UserRound size={28} />
+      </div>
+
+      <div>
+        <p>Личный кабинет</p>
+
+        <h1>Мой профиль</h1>
+
+        <span>
+          Статистика, достижения и
+          персональное оформление аккаунта.
+        </span>
+      </div>
+    </header>
+  )
+}
+
+function ProfileHero({
+  user,
+  level,
+  currentFrame,
+  currentBackground,
+}) {
+  return (
+    <section
+      className={`modern-profile-hero ${currentBackground.className}`}
+    >
+      <div className="modern-profile-hero-content">
         <div
-          className={`profile-main-avatar ${currentFrame.className}`}
+          className={`modern-profile-avatar ${currentFrame.className}`}
         >
-          {user.name
+          {String(user.name || 'У')
             .charAt(0)
             .toUpperCase()}
         </div>
 
-        <div className="profile-main-info">
-          <span className="profile-role">
+        <div className="modern-profile-main-info">
+          <span className="modern-profile-role">
             {user.role}
           </span>
 
           <h2>{user.name}</h2>
 
-          <p>
-            {user.school}
-            {user.className
-              ? ` · ${user.className}`
-              : ''}
-          </p>
+          <div className="modern-profile-school">
+            <School size={16} />
 
-          <div className="profile-level-badge">
-            {level.icon} {level.name}
+            <span>
+              {user.school ||
+                'Школа не указана'}
+              {user.className
+                ? ` · ${user.className}`
+                : ''}
+            </span>
+          </div>
+
+          <div className="modern-profile-level">
+            <Medal size={17} />
+            {level.name}
+          </div>
+        </div>
+      </div>
+
+      <div className="modern-profile-streak">
+        <Flame size={30} />
+
+        <strong>
+          {Number(user.streak || 0)}
+        </strong>
+
+        <span>дней подряд</span>
+      </div>
+    </section>
+  )
+}
+
+function ProfileStats({
+  user,
+  achievementsCount,
+}) {
+  const stats = [
+    {
+      label: 'Баллов',
+      value: Number(user.points || 0),
+      icon: Coins,
+      className:
+        'modern-profile-stat--gold',
+    },
+    {
+      label: 'Опыта',
+      value: Number(user.xp || 0),
+      icon: Zap,
+      className:
+        'modern-profile-stat--blue',
+    },
+    {
+      label: 'Заданий',
+      value: Number(
+        user.completedTasks || 0,
+      ),
+      icon: ClipboardCheck,
+      className:
+        'modern-profile-stat--green',
+    },
+    {
+      label: 'Достижений',
+      value: achievementsCount,
+      icon: Trophy,
+      className:
+        'modern-profile-stat--purple',
+    },
+    {
+      label: 'Рекорд серии',
+      value: Number(
+        user.bestStreak || 0,
+      ),
+      icon: Flame,
+      className:
+        'modern-profile-stat--orange',
+    },
+    {
+      label: 'Заморозок',
+      value: Number(user.freezes || 0),
+      icon: Snowflake,
+      className:
+        'modern-profile-stat--cyan',
+    },
+  ]
+
+  return (
+    <section className="modern-profile-stats">
+      {stats.map((stat) => {
+        const Icon = stat.icon
+
+        return (
+          <article
+            className={`modern-profile-stat-card ${stat.className}`}
+            key={stat.label}
+          >
+            <div className="modern-profile-stat-icon">
+              <Icon size={21} />
+            </div>
+
+            <div>
+              <strong>
+                {stat.value.toLocaleString(
+                  'ru-RU',
+                )}
+              </strong>
+
+              <span>{stat.label}</span>
+            </div>
+          </article>
+        )
+      })}
+    </section>
+  )
+}
+
+function ProfileCustomization({
+  user,
+  availableFrames,
+  availableBackgrounds,
+  activeFrame,
+  activeBackground,
+  selectFrame,
+  selectBackground,
+}) {
+  return (
+    <section className="modern-profile-section">
+      <div className="modern-profile-section-heading">
+        <div>
+          <p>Персонализация</p>
+          <h2>Оформление профиля</h2>
+        </div>
+
+        <Palette size={22} />
+      </div>
+
+      <div className="modern-profile-custom-block">
+        <div className="modern-profile-custom-title">
+          <Frame size={18} />
+
+          <div>
+            <h3>Рамка профиля</h3>
+            <p>
+              Выберите оформление аватара.
+            </p>
           </div>
         </div>
 
-        <div className="profile-streak-box">
-          <span>🔥</span>
+        <div className="modern-profile-options">
+          {availableFrames.map(
+            (frame) => (
+              <button
+                type="button"
+                key={frame.id}
+                className={
+                  activeFrame === frame.id
+                    ? 'modern-profile-option modern-profile-option--active'
+                    : 'modern-profile-option'
+                }
+                onClick={() =>
+                  selectFrame(frame)
+                }
+              >
+                <div
+                  className={`modern-profile-option-avatar ${frame.className}`}
+                >
+                  {String(user.name || 'У')
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
 
-          <strong>
-            {Number(user.streak || 0)}
-          </strong>
+                <div className="modern-profile-option-info">
+                  <strong>
+                    {frame.name}
+                  </strong>
 
-          <p>дней серии</p>
+                  <span>
+                    {frame.description}
+                  </span>
+                </div>
+
+                <ProfileOptionState
+                  owned={frame.owned}
+                  active={
+                    activeFrame === frame.id
+                  }
+                />
+              </button>
+            ),
+          )}
         </div>
-      </section>
+      </div>
 
-      <section className="profile-stats-grid">
-        <div className="profile-stat-card">
-          <span>⭐</span>
+      <div className="modern-profile-custom-block">
+        <div className="modern-profile-custom-title">
+          <Sparkles size={18} />
 
-          <strong>
-            {Number(user.points || 0)}
-          </strong>
-
-          <p>Баллов</p>
-        </div>
-
-        <div className="profile-stat-card">
-          <span>⚡</span>
-
-          <strong>
-            {Number(user.xp || 0)}
-          </strong>
-
-          <p>Опыта</p>
-        </div>
-
-        <div className="profile-stat-card">
-          <span>✅</span>
-
-          <strong>
-            {Number(
-              user.completedTasks || 0,
-            )}
-          </strong>
-
-          <p>Заданий выполнено</p>
-        </div>
-
-        <div className="profile-stat-card">
-          <span>🏆</span>
-
-          <strong>
-            {unlockedAchievements.length}
-          </strong>
-
-          <p>Достижений</p>
-        </div>
-
-        <div className="profile-stat-card">
-          <span>🔥</span>
-
-          <strong>
-            {Number(user.bestStreak || 0)}
-          </strong>
-
-          <p>Рекорд серии</p>
+          <div>
+            <h3>Фон профиля</h3>
+            <p>
+              Измените фон верхней карточки.
+            </p>
+          </div>
         </div>
 
-        <div className="profile-stat-card">
-          <span>🧊</span>
+        <div className="modern-background-options">
+          {availableBackgrounds.map(
+            (background) => (
+              <button
+                type="button"
+                key={background.id}
+                className={
+                  activeBackground ===
+                  background.id
+                    ? 'modern-background-option modern-background-option--active'
+                    : 'modern-background-option'
+                }
+                onClick={() =>
+                  selectBackground(
+                    background,
+                  )
+                }
+              >
+                <div
+                  className={`modern-background-preview ${background.className}`}
+                >
+                  <ShieldCheck size={24} />
+                </div>
 
-          <strong>
-            {Number(user.freezes || 0)}
-          </strong>
+                <div>
+                  <strong>
+                    {background.name}
+                  </strong>
 
-          <p>Заморозок</p>
+                  <span>
+                    {background.description}
+                  </span>
+                </div>
+
+                <ProfileOptionState
+                  owned={background.owned}
+                  active={
+                    activeBackground ===
+                    background.id
+                  }
+                />
+              </button>
+            ),
+          )}
         </div>
-      </section>
+      </div>
+    </section>
+  )
+}
 
-      <section className="profile-content-grid">
-        <div className="content-card">
-          <h2>Оформление профиля</h2>
+function ProfileOptionState({
+  owned,
+  active,
+}) {
+  if (!owned) {
+    return (
+      <span className="modern-profile-option-state modern-profile-option-state--locked">
+        <LockKeyhole size={15} />
+      </span>
+    )
+  }
 
-          <div className="profile-customization-block">
-            <h3>Рамка профиля</h3>
+  if (active) {
+    return (
+      <span className="modern-profile-option-state modern-profile-option-state--active">
+        <Check size={16} />
+      </span>
+    )
+  }
 
-            <div className="profile-options">
-              {availableFrames.map(
-                (frame) => (
-                  <button
-                    type="button"
-                    key={frame.id}
-                    className={
-                      activeFrame === frame.id
-                        ? 'profile-option active'
-                        : 'profile-option'
-                    }
-                    onClick={() =>
-                      selectFrame(frame)
+  return (
+    <span className="modern-profile-option-state">
+      <CheckCircle2 size={16} />
+    </span>
+  )
+}
+
+function ProfileAchievements({
+  unlockedAchievements,
+  achievementProgress,
+}) {
+  return (
+    <section className="modern-profile-section">
+      <div className="modern-profile-section-heading">
+        <div>
+          <p>Коллекция наград</p>
+          <h2>Достижения</h2>
+        </div>
+
+        <Award size={22} />
+      </div>
+
+      {unlockedAchievements.length ===
+      0 ? (
+        <div className="modern-profile-empty">
+          <div>
+            <Trophy size={29} />
+          </div>
+
+          <h3>Достижений пока нет</h3>
+
+          <p>
+            Выполняйте задания и открывайте
+            новые награды.
+          </p>
+        </div>
+      ) : (
+        <div className="modern-profile-achievements">
+          {unlockedAchievements
+            .slice(0, 6)
+            .map(
+              (
+                achievement,
+                index,
+              ) => {
+                const Icon =
+                  getAchievementIcon(
+                    achievement,
+                    index,
+                  )
+
+                return (
+                  <article
+                    className="modern-profile-achievement"
+                    key={
+                      achievement.id
                     }
                   >
-                    <div
-                      className={`profile-option-preview ${frame.className}`}
-                    >
-                      Н
+                    <div className="modern-profile-achievement-icon">
+                      <Icon size={21} />
                     </div>
 
-                    <span>{frame.name}</span>
+                    <div>
+                      <strong>
+                        {
+                          achievement.name
+                        }
+                      </strong>
 
-                    {!frame.owned && (
-                      <small>
-                        🔒 Не куплено
-                      </small>
-                    )}
+                      <p>
+                        {
+                          achievement.description
+                        }
+                      </p>
+                    </div>
 
-                    {frame.owned &&
-                      activeFrame ===
-                        frame.id && (
-                        <small>
-                          ✅ Выбрано
-                        </small>
-                      )}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-
-          <div className="profile-customization-block">
-            <h3>Фон профиля</h3>
-
-            <div className="background-options">
-              {availableBackgrounds.map(
-                (background) => (
-                  <button
-                    type="button"
-                    key={background.id}
-                    className={
-                      activeBackground ===
-                      background.id
-                        ? 'background-option active'
-                        : 'background-option'
-                    }
-                    onClick={() =>
-                      selectBackground(
-                        background,
-                      )
-                    }
-                  >
-                    <div
-                      className={`background-preview ${background.className}`}
+                    <CheckCircle2
+                      size={18}
+                      className="modern-profile-achievement-check"
                     />
-
-                    <span>
-                      {background.name}
-                    </span>
-
-                    {!background.owned && (
-                      <small>
-                        🔒 Не куплено
-                      </small>
-                    )}
-
-                    {background.owned &&
-                      activeBackground ===
-                        background.id && (
-                        <small>
-                          ✅ Выбрано
-                        </small>
-                      )}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="content-card">
-          <h2>Открытые достижения</h2>
-
-          <div className="profile-achievements-list">
-            {unlockedAchievements.length ===
-              0 && (
-              <p className="empty-text">
-                Достижений пока нет.
-              </p>
+                  </article>
+                )
+              },
             )}
-
-            {unlockedAchievements
-              .slice(0, 6)
-              .map((achievement) => (
-                <div
-                  className="profile-achievement-item"
-                  key={achievement.id}
-                >
-                  <span>
-                    {achievement.icon}
-                  </span>
-
-                  <div>
-                    <strong>
-                      {achievement.name}
-                    </strong>
-
-                    <p>
-                      {
-                        achievement.description
-                      }
-                    </p>
-                  </div>
-                </div>
-              ))}
-          </div>
-
-          <div className="profile-achievement-progress">
-            <span>
-              Открыто{' '}
-              {unlockedAchievements.length} из{' '}
-              {achievements.length}
-            </span>
-
-            <div className="profile-progress-track">
-              <div
-                className="profile-progress-fill"
-                style={{
-                  width: `${
-                    (unlockedAchievements.length /
-                      achievements.length) *
-                    100
-                  }%`,
-                }}
-              />
-            </div>
-          </div>
         </div>
-      </section>
+      )}
 
-      <section className="content-card profile-details-card">
-        <h2>Данные аккаунта</h2>
+      <div className="modern-profile-achievement-progress">
+        <div>
+          <span>
+            Открыто{' '}
+            {
+              unlockedAchievements.length
+            }{' '}
+            из {achievements.length}
+          </span>
 
-        <div className="profile-details-grid">
-          <div>
-            <div>
-  <span>Код для родителя</span>
-
-  <strong>
-    {getStudentCode(user)}
-  </strong>
-</div>
-            <span>Имя</span>
-            <strong>{user.name}</strong>
-          </div>
-
-          <div>
-            <span>Электронная почта</span>
-            <strong>{user.email}</strong>
-          </div>
-
-          <div>
-            <span>Роль</span>
-            <strong>{user.role}</strong>
-          </div>
-
-          <div>
-            <span>Школа</span>
-            <strong>{user.school}</strong>
-          </div>
-
-          <div>
-            <span>Класс</span>
-            <strong>
-              {user.className ||
-                'Не указан'}
-            </strong>
-          </div>
-
-          <div>
-            <span>Дополнительные попытки</span>
-            <strong>
-              {Number(
-                user.extraAttempts || 0,
-              )}
-            </strong>
-          </div>
+          <strong>
+            {achievementProgress}%
+          </strong>
         </div>
-      </section>
-    </div>
+
+        <div className="modern-profile-progress-track">
+          <span
+            style={{
+              width: `${achievementProgress}%`,
+            }}
+          />
+        </div>
+      </div>
+    </section>
   )
+}
+
+function ProfileAccountDetails({
+  user,
+  copyStudentCode,
+}) {
+  const details = [
+    {
+      label: 'Имя',
+      value: user.name || 'Не указано',
+      icon: UserRound,
+    },
+    {
+      label: 'Электронная почта',
+      value: user.email || 'Не указана',
+      icon: Mail,
+    },
+    {
+      label: 'Роль',
+      value: user.role || 'Не указана',
+      icon: ShieldCheck,
+    },
+    {
+      label: 'Школа',
+      value:
+        user.school || 'Не указана',
+      icon: School,
+    },
+    {
+      label: 'Класс',
+      value:
+        user.className || 'Не указан',
+      icon: GraduationCap,
+    },
+    {
+      label: 'Дополнительные попытки',
+      value: Number(
+        user.extraAttempts || 0,
+      ),
+      icon: Star,
+    },
+  ]
+
+  return (
+    <section className="modern-profile-section">
+      <div className="modern-profile-section-heading">
+        <div>
+          <p>Учётная запись</p>
+          <h2>Данные аккаунта</h2>
+        </div>
+
+        <UserRound size={22} />
+      </div>
+
+      {user.role === 'Ученик' && (
+        <div className="modern-parent-code-card">
+          <div className="modern-parent-code-icon">
+            <ShieldCheck size={24} />
+          </div>
+
+          <div>
+            <span>Код для родителя</span>
+
+            <strong>
+              {getStudentCode(user)}
+            </strong>
+          </div>
+
+          <button
+            type="button"
+            onClick={copyStudentCode}
+          >
+            <Copy size={18} />
+            Скопировать
+          </button>
+        </div>
+      )}
+
+      <div className="modern-profile-details-grid">
+        {details.map((detail) => {
+          const Icon = detail.icon
+
+          return (
+            <article
+              className="modern-profile-detail"
+              key={detail.label}
+            >
+              <div>
+                <Icon size={19} />
+              </div>
+
+              <span>
+                <small>
+                  {detail.label}
+                </small>
+
+                <strong>
+                  {detail.value}
+                </strong>
+              </span>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function getAchievementIcon(
+  achievement,
+  index,
+) {
+  const text = `${achievement.name || ''} ${
+    achievement.description || ''
+  }`.toLowerCase()
+
+  if (
+    text.includes('серия') ||
+    text.includes('день')
+  ) {
+    return Flame
+  }
+
+  if (
+    text.includes('задани') ||
+    text.includes('работ')
+  ) {
+    return ClipboardCheck
+  }
+
+  if (
+    text.includes('опыт') ||
+    text.includes('уров')
+  ) {
+    return Zap
+  }
+
+  if (
+    text.includes('побед') ||
+    text.includes('лучш')
+  ) {
+    return Trophy
+  }
+
+  const icons = [
+    Award,
+    Medal,
+    Trophy,
+    Star,
+  ]
+
+  return icons[index % icons.length]
 }
 
 export default ProfilePage
