@@ -1,4 +1,5 @@
 import {
+  createNotification,
   createNotificationsForUsers,
   getStudentsForTask,
 } from './notificationService'

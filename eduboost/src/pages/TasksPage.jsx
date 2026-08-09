@@ -30,15 +30,15 @@ import {
 } from '../services/notificationService'
 
 import {
-  createTask,
-  deleteTask,
-  getStudentSubmission,
-  getTasksForStudent,
-  getTasksForTeacher,
-  getTeacherSubmissions,
-  submitTask,
-  updateSubmissionStatus,
-} from '../services/taskService'
+  createSupabaseTask,
+  deleteSupabaseTask,
+  getSupabaseStudentSubmissions,
+  getSupabaseTasksForStudent,
+  getSupabaseTasksForTeacher,
+  getSupabaseTeacherSubmissions,
+  reviewSupabaseSubmission,
+  submitSupabaseTask,
+} from '../services/supabaseTaskService'
 
 const INITIAL_FORM = {
   title: '',
@@ -66,30 +66,69 @@ function TasksPage() {
     useState('active')
 
   useEffect(() => {
-    loadData()
+    void loadData()
   }, [user])
 
-  function loadData() {
+  async function loadData() {
     if (!user) {
       setTasks([])
       setSubmissions([])
       return
     }
 
-    if (user.role === 'Учитель') {
-      setTasks(getTasksForTeacher(user))
-      setSubmissions(getTeacherSubmissions(user))
-      return
-    }
+    try {
+      if (user.role === 'Учитель') {
+        const [
+          teacherTasks,
+          teacherSubmissions,
+        ] = await Promise.all([
+          getSupabaseTasksForTeacher(user),
+          getSupabaseTeacherSubmissions(
+            user.id,
+          ),
+        ])
 
-    if (user.role === 'Ученик') {
-      setTasks(getTasksForStudent(user))
+        setTasks(teacherTasks)
+        setSubmissions(
+          teacherSubmissions,
+        )
+        return
+      }
+
+      if (user.role === 'Ученик') {
+        const [
+          studentTasks,
+          studentSubmissions,
+        ] = await Promise.all([
+          getSupabaseTasksForStudent(user),
+          getSupabaseStudentSubmissions(
+            user.id,
+          ),
+        ])
+
+        setTasks(studentTasks)
+        setSubmissions(
+          studentSubmissions,
+        )
+        return
+      }
+
+      setTasks([])
       setSubmissions([])
-      return
-    }
+    } catch (error) {
+      console.error(
+        'Ошибка загрузки заданий:',
+        error,
+      )
 
-    setTasks([])
-    setSubmissions([])
+      setTasks([])
+      setSubmissions([])
+
+      window.alert(
+        error.message ||
+          'Не удалось загрузить задания',
+      )
+    }
   }
 
   function handleFormChange(event) {
@@ -109,13 +148,13 @@ function TasksPage() {
     }))
   }
 
-  function handleCreateTask(event) {
+  async function handleCreateTask(event) {
     event.preventDefault()
 
     try {
-      createTask(form, user)
+      await createSupabaseTask(form, user)
       setForm(INITIAL_FORM)
-      loadData()
+      await loadData()
     } catch (error) {
       window.alert(
         error.message ||
@@ -124,7 +163,7 @@ function TasksPage() {
     }
   }
 
-  function handleDeleteTask(taskId) {
+  async function handleDeleteTask(taskId) {
     const confirmed = window.confirm(
       'Удалить это задание и все отчёты к нему?',
     )
@@ -134,8 +173,8 @@ function TasksPage() {
     }
 
     try {
-      deleteTask(taskId)
-      loadData()
+      await deleteSupabaseTask(taskId)
+      await loadData()
     } catch (error) {
       window.alert(
         error.message ||
@@ -145,10 +184,12 @@ function TasksPage() {
   }
 
   function openReportModal(task) {
-    const oldSubmission = getStudentSubmission(
-      task.id,
-      user.id,
-    )
+    const oldSubmission =
+      submissions.find(
+        (submission) =>
+          submission.taskId === task.id &&
+          submission.studentId === user.id,
+      )
 
     setSelectedTask(task)
     setReportText(
@@ -161,7 +202,7 @@ function TasksPage() {
     setReportText('')
   }
 
-  function handleSubmitReport(event) {
+  async function handleSubmitReport(event) {
     event.preventDefault()
 
     if (!selectedTask) {
@@ -176,14 +217,14 @@ function TasksPage() {
     }
 
     try {
-      submitTask(
+      await submitSupabaseTask(
         selectedTask,
         user,
         reportText.trim(),
       )
 
       closeReportModal()
-      loadData()
+      await loadData()
     } catch (error) {
       window.alert(
         error.message ||
@@ -218,33 +259,13 @@ function TasksPage() {
     })
   }
 
-  function handleApprove(submission) {
+  async function handleApprove(submission) {
     try {
-      const allSubmissions = JSON.parse(
-        localStorage.getItem(
-          'eduboost_submissions',
-        ) || '[]',
-      )
-
-      const storedSubmission =
-        allSubmissions.find(
-          (item) =>
-            item.id === submission.id,
-        )
-
-      const rewardWasAlreadyGiven =
-        storedSubmission?.rewardGiven === true
-
-      updateSubmissionStatus(
+      await reviewSupabaseSubmission(
         submission.id,
         'approved',
         getTeacherComment(submission.id),
       )
-
-      if (!rewardWasAlreadyGiven) {
-        giveRewardToStudent(submission)
-        markRewardAsGiven(submission.id)
-      }
 
       createNotification({
         userId: submission.studentId,
@@ -267,7 +288,7 @@ function TasksPage() {
       )
 
       clearTeacherComment(submission.id)
-      loadData()
+      await loadData()
     } catch (error) {
       window.alert(
         error.message ||
@@ -276,9 +297,9 @@ function TasksPage() {
     }
   }
 
-  function handleReject(submission) {
+  async function handleReject(submission) {
     try {
-      updateSubmissionStatus(
+      await reviewSupabaseSubmission(
         submission.id,
         'rejected',
         getTeacherComment(submission.id),
@@ -306,157 +327,13 @@ function TasksPage() {
       )
 
       clearTeacherComment(submission.id)
-      loadData()
+      await loadData()
     } catch (error) {
       window.alert(
         error.message ||
           'Не удалось вернуть работу',
       )
     }
-  }
-
-  function giveRewardToStudent(submission) {
-    const allUsers = JSON.parse(
-      localStorage.getItem(
-        'eduboost_users',
-      ) || '[]',
-    )
-
-    const student = allUsers.find(
-      (item) =>
-        item.id === submission.studentId,
-    )
-
-    if (!student) {
-      return
-    }
-
-    const reward = Number(
-      submission.taskReward || 0,
-    )
-
-    const today = new Date()
-      .toISOString()
-      .slice(0, 10)
-
-    const streakData = calculateStreak(
-      student,
-      today,
-      submission.affectsStreak,
-    )
-
-    const updatedStudent = {
-      ...student,
-      points:
-        Number(student.points || 0) +
-        reward,
-      xp:
-        Number(student.xp || 0) +
-        reward,
-      completedTasks:
-        Number(
-          student.completedTasks || 0,
-        ) + 1,
-      streak: streakData.streak,
-      bestStreak: Math.max(
-        Number(student.bestStreak || 0),
-        streakData.streak,
-      ),
-      lastActivityDate:
-        streakData.lastActivityDate,
-    }
-
-    const updatedUsers = allUsers.map(
-      (existingUser) =>
-        existingUser.id === student.id
-          ? updatedStudent
-          : existingUser,
-    )
-
-    localStorage.setItem(
-      'eduboost_users',
-      JSON.stringify(updatedUsers),
-    )
-  }
-
-  function calculateStreak(
-    student,
-    today,
-    affectsStreak,
-  ) {
-    const oldStreak = Number(
-      student.streak || 0,
-    )
-
-    if (!affectsStreak) {
-      return {
-        streak: oldStreak,
-        lastActivityDate:
-          student.lastActivityDate || '',
-      }
-    }
-
-    const lastDate =
-      student.lastActivityDate || ''
-
-    if (!lastDate) {
-      return {
-        streak: 1,
-        lastActivityDate: today,
-      }
-    }
-
-    if (lastDate === today) {
-      return {
-        streak: oldStreak,
-        lastActivityDate: today,
-      }
-    }
-
-    const difference = Math.floor(
-      (new Date(`${today}T12:00:00`) -
-        new Date(
-          `${lastDate}T12:00:00`,
-        )) /
-        86400000,
-    )
-
-    if (difference === 1) {
-      return {
-        streak: oldStreak + 1,
-        lastActivityDate: today,
-      }
-    }
-
-    return {
-      streak: 1,
-      lastActivityDate: today,
-    }
-  }
-
-  function markRewardAsGiven(
-    submissionId,
-  ) {
-    const allSubmissions = JSON.parse(
-      localStorage.getItem(
-        'eduboost_submissions',
-      ) || '[]',
-    )
-
-    const updatedSubmissions =
-      allSubmissions.map((submission) =>
-        submission.id === submissionId
-          ? {
-              ...submission,
-              rewardGiven: true,
-            }
-          : submission,
-      )
-
-    localStorage.setItem(
-      'eduboost_submissions',
-      JSON.stringify(updatedSubmissions),
-    )
   }
 
   function getStatusText(status) {
@@ -473,10 +350,12 @@ function TasksPage() {
   }
 
   function getStudentTaskData(task) {
-    const submission = getStudentSubmission(
-      task.id,
-      user.id,
-    )
+    const submission =
+      submissions.find(
+        (item) =>
+          item.taskId === task.id &&
+          item.studentId === user.id,
+      )
 
     return {
       status:

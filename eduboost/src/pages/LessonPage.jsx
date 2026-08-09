@@ -3,7 +3,29 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
+  Clock3,
+  Coins,
+  Download,
+  ExternalLink,
+  FileText,
+  GraduationCap,
+  LockKeyhole,
+  PlayCircle,
+  RotateCcw,
+  Sparkles,
+  Trophy,
+  Video,
+  XCircle,
+  Zap,
+} from 'lucide-react'
+
 import { useAuth } from '../context/AuthContext'
+
 import {
   canOpenLesson,
   completeLesson,
@@ -11,46 +33,6 @@ import {
   getCourseById,
   getStudentCourseProgress,
 } from '../services/courseService'
-
-function formatFileSize(bytes = 0) {
-  if (bytes < 1024) {
-    return `${bytes} Б`
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${Math.round(bytes / 1024)} КБ`
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
-}
-
-function getYoutubeEmbedUrl(url = '') {
-  try {
-    if (url.includes('youtu.be/')) {
-      const videoId = url.split('youtu.be/')[1]?.split('?')[0]
-      return videoId
-        ? `https://www.youtube.com/embed/${videoId}`
-        : null
-    }
-
-    if (url.includes('youtube.com/watch')) {
-      const parsedUrl = new URL(url)
-      const videoId = parsedUrl.searchParams.get('v')
-
-      return videoId
-        ? `https://www.youtube.com/embed/${videoId}`
-        : null
-    }
-
-    if (url.includes('youtube.com/embed/')) {
-      return url
-    }
-  } catch {
-    return null
-  }
-
-  return null
-}
 
 function LessonPage() {
   const { courseId, lessonId } = useParams()
@@ -61,17 +43,23 @@ function LessonPage() {
   const [progress, setProgress] = useState(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [isCompleting, setIsCompleting] =
+    useState(false)
+  const [downloadingId, setDownloadingId] =
+    useState(null)
 
-  const loadData = () => {
-    const foundCourse = getCourseById(courseId)
-    setCourse(foundCourse)
+  function loadData() {
+    const foundCourse =
+      getCourseById(courseId)
+
+    setCourse(foundCourse || null)
 
     if (user?.id) {
       setProgress(
         getStudentCourseProgress(
           user.id,
-          courseId
-        )
+          courseId,
+        ),
       )
     }
   }
@@ -81,18 +69,21 @@ function LessonPage() {
   }, [courseId, lessonId, user?.id])
 
   const sortedLessons = useMemo(() => {
-    if (!course?.lessons) {
+    if (!Array.isArray(course?.lessons)) {
       return []
     }
 
     return [...course.lessons].sort(
-      (a, b) => a.order - b.order
+      (firstLesson, secondLesson) =>
+        Number(firstLesson.order || 0) -
+        Number(secondLesson.order || 0),
     )
   }, [course])
 
-  const lessonIndex = sortedLessons.findIndex(
-    (lesson) => lesson.id === lessonId
-  )
+  const lessonIndex =
+    sortedLessons.findIndex(
+      (item) => item.id === lessonId,
+    )
 
   const lesson =
     lessonIndex >= 0
@@ -106,83 +97,112 @@ function LessonPage() {
 
   const nextLesson =
     lessonIndex >= 0 &&
-    lessonIndex < sortedLessons.length - 1
+    lessonIndex <
+      sortedLessons.length - 1
       ? sortedLessons[lessonIndex + 1]
       : null
 
+  const completedIds =
+    progress?.completedLessonIds || []
+
   const isCompleted =
-    progress?.completedLessonIds?.includes(
-      lessonId
-    ) || false
+    completedIds.includes(lessonId)
 
-  const youtubeEmbedUrl = lesson?.videoUrl
-    ? getYoutubeEmbedUrl(lesson.videoUrl)
-    : null
+  const youtubeEmbedUrl =
+    lesson?.videoUrl
+      ? getYoutubeEmbedUrl(
+          lesson.videoUrl,
+        )
+      : null
 
-  const handleCompleteLesson = () => {
+  const courseProgress = Math.min(
+    Math.max(
+      Number(
+        progress?.progressPercent || 0,
+      ),
+      0,
+    ),
+    100,
+  )
+
+  function handleCompleteLesson() {
     setMessage('')
     setError('')
 
+    if (!lesson || isCompleted) {
+      return
+    }
+
     try {
+      setIsCompleting(true)
+
       const result = completeLesson(
         courseId,
-        lessonId
+        lessonId,
       )
 
       loadData()
 
-      if (result.rewardAlreadyReceived) {
+      if (
+        result.rewardAlreadyReceived
+      ) {
         setMessage(
-          'Этот урок уже завершён. Награда была получена ранее.'
+          'Урок уже был завершён. Награда была получена ранее.',
         )
-      } else if (result.courseCompleted) {
+      } else if (
+        result.courseCompleted
+      ) {
         setMessage(
-          `Поздравляем! Курс завершён. Вы получили +${result.receivedPoints} баллов и +${result.receivedXp} XP.`
+          `Курс завершён! Получено +${result.receivedPoints} баллов и +${result.receivedXp} XP.`,
         )
       } else {
         setMessage(
-          `Урок завершён! Получено +${result.receivedPoints} баллов и +${result.receivedXp} XP.`
+          `Урок завершён! Получено +${result.receivedPoints} баллов и +${result.receivedXp} XP.`,
         )
       }
     } catch (completeError) {
       setError(
         completeError.message ||
-          'Не удалось завершить урок'
+          'Не удалось завершить урок',
       )
+    } finally {
+      setIsCompleting(false)
     }
   }
 
-  const handleDownload = (attachment) => {
+  function handleDownload(attachment) {
     setMessage('')
     setError('')
 
     try {
+      setDownloadingId(attachment.id)
+
       downloadAttachment(attachment)
     } catch (downloadError) {
       setError(
         downloadError.message ||
-          'Не удалось скачать файл'
+          'Не удалось скачать файл',
       )
+    } finally {
+      setDownloadingId(null)
     }
+  }
+
+  if (!user) {
+    return null
   }
 
   if (!course || !lesson) {
     return (
-      <div className="page-container">
-        <div className="content-card">
-          <h1>Урок не найден</h1>
-
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() =>
-              navigate(`/courses/${courseId}`)
-            }
-          >
-            Вернуться к курсу
-          </button>
-        </div>
-      </div>
+      <LessonState
+        icon={BookOpen}
+        title="Урок не найден"
+        text="Возможно, урок был удалён или ссылка указана неправильно."
+        buttonText="Вернуться к курсу"
+        onClick={() =>
+          navigate(`/courses/${courseId}`)
+        }
+      />
     )
   }
 
@@ -192,312 +212,697 @@ function LessonPage() {
     canOpenLesson(
       courseId,
       lessonId,
-      user.id
+      user.id,
     )
 
   if (!allowed) {
     return (
-      <div className="page-container">
-        <div className="content-card">
-          <h1>Урок пока заблокирован</h1>
-
-          <p>
-            Сначала завершите предыдущий урок.
-          </p>
-
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() =>
-              navigate(`/courses/${courseId}`)
-            }
-          >
-            Вернуться к содержанию
-          </button>
-        </div>
-      </div>
+      <LessonState
+        icon={LockKeyhole}
+        title="Урок заблокирован"
+        text="Сначала завершите предыдущий урок, чтобы открыть этот материал."
+        buttonText="Вернуться к содержанию"
+        onClick={() =>
+          navigate(`/courses/${courseId}`)
+        }
+      />
     )
   }
 
   return (
-    <div className="page-container">
+    <div className="lesson-page">
       <button
         type="button"
-        className="secondary-button"
+        className="lesson-back-button"
         onClick={() =>
           navigate(`/courses/${courseId}`)
         }
-        style={{
-          marginBottom: '16px',
-        }}
       >
-        ← К содержанию курса
+        <ArrowLeft size={18} />
+        К содержанию курса
       </button>
 
       {message && (
-        <div className="success-message">
-          {message}
+        <div className="lesson-alert lesson-alert--success">
+          <CheckCircle2 size={19} />
+          <span>{message}</span>
         </div>
       )}
 
       {error && (
-        <div className="error-message">
-          {error}
+        <div className="lesson-alert lesson-alert--error">
+          <XCircle size={19} />
+          <span>{error}</span>
         </div>
       )}
 
-      <article className="content-card">
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-          }}
-        >
-          <div>
-            <p
-              style={{
-                color: '#6b7280',
-                marginBottom: '5px',
-              }}
-            >
-              {course.title} · Урок {lessonIndex + 1}
-            </p>
+      <LessonHeader
+        course={course}
+        lesson={lesson}
+        lessonIndex={lessonIndex}
+        lessonsCount={
+          sortedLessons.length
+        }
+        progress={courseProgress}
+        isCompleted={isCompleted}
+      />
 
-            <h1>{lesson.title}</h1>
+      <LessonStats lesson={lesson} />
 
-            {lesson.description && (
-              <p
-                style={{
-                  color: '#6b7280',
-                }}
-              >
-                {lesson.description}
-              </p>
+      <div className="lesson-content-layout">
+        <main className="lesson-main-column">
+          {lesson.videoUrl && (
+            <LessonVideo
+              lesson={lesson}
+              youtubeEmbedUrl={
+                youtubeEmbedUrl
+              }
+            />
+          )}
+
+          {lesson.content && (
+            <LessonMaterial
+              content={lesson.content}
+            />
+          )}
+
+          {Array.isArray(
+            lesson.attachments,
+          ) &&
+            lesson.attachments.length >
+              0 && (
+              <LessonAttachments
+                attachments={
+                  lesson.attachments
+                }
+                downloadingId={
+                  downloadingId
+                }
+                onDownload={
+                  handleDownload
+                }
+              />
             )}
+
+          {!lesson.videoUrl &&
+            !lesson.content &&
+            !lesson.attachments
+              ?.length && (
+              <LessonEmptyContent />
+            )}
+        </main>
+
+        <aside className="lesson-sidebar">
+          <div className="lesson-sidebar-icon">
+            <Sparkles size={25} />
           </div>
 
-          <div
-            style={{
-              padding: '10px 14px',
-              borderRadius: '12px',
-              background: '#eef2ff',
-            }}
-          >
-            ⏱ {lesson.duration} минут
-            <br />
-            🏆 +{lesson.pointsReward} баллов
-            <br />
-            ⭐ +{lesson.xpReward} XP
+          <p>Текущий урок</p>
+
+          <h2>
+            {lessonIndex + 1} из{' '}
+            {sortedLessons.length}
+          </h2>
+
+          <div className="lesson-sidebar-progress">
+            <div>
+              <span>
+                Прогресс курса
+              </span>
+
+              <strong>
+                {courseProgress}%
+              </strong>
+            </div>
+
+            <div>
+              <span
+                style={{
+                  width: `${courseProgress}%`,
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        {lesson.videoUrl && (
-          <section
-            style={{
-              marginTop: '24px',
-            }}
-          >
-            <h2>Видео урока</h2>
+          <LessonSidebarInfo
+            icon={Clock3}
+            label="Длительность"
+            value={`${Number(
+              lesson.duration || 0,
+            )} минут`}
+          />
 
-            {youtubeEmbedUrl ? (
-              <div
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  paddingTop: '56.25%',
-                  overflow: 'hidden',
-                  borderRadius: '16px',
-                  background: '#000000',
-                }}
-              >
-                <iframe
-                  src={youtubeEmbedUrl}
-                  title={lesson.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    width: '100%',
-                    height: '100%',
-                    border: 0,
-                  }}
-                />
-              </div>
-            ) : (
-              <a
-                href={lesson.videoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="primary-button"
-                style={{
-                  display: 'inline-block',
-                  textDecoration: 'none',
-                }}
-              >
-                Открыть видео
-              </a>
-            )}
-          </section>
-        )}
+          <LessonSidebarInfo
+            icon={Coins}
+            label="Награда"
+            value={`+${Number(
+              lesson.pointsReward || 0,
+            )} баллов`}
+          />
 
-        {lesson.content && (
-          <section
-            style={{
-              marginTop: '26px',
-            }}
-          >
-            <h2>Материал урока</h2>
+          <LessonSidebarInfo
+            icon={Zap}
+            label="Опыт"
+            value={`+${Number(
+              lesson.xpReward || 0,
+            )} XP`}
+          />
 
-            <div
-              style={{
-                whiteSpace: 'pre-wrap',
-                lineHeight: 1.8,
-                padding: '18px',
-                borderRadius: '14px',
-                background: '#f9fafb',
-              }}
-            >
-              {lesson.content}
-            </div>
-          </section>
-        )}
-
-        {lesson.attachments?.length > 0 && (
-          <section
-            style={{
-              marginTop: '26px',
-            }}
-          >
-            <h2>Прикреплённые материалы</h2>
-
-            <div
-              style={{
-                display: 'grid',
-                gap: '10px',
-              }}
-            >
-              {lesson.attachments.map(
-                (attachment) => (
-                  <div
-                    key={attachment.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '14px',
-                      padding: '14px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '12px',
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <div>
-                      <strong>
-                        📎 {attachment.name}
-                      </strong>
-
-                      <div
-                        style={{
-                          color: '#6b7280',
-                          fontSize: '13px',
-                          marginTop: '4px',
-                        }}
-                      >
-                        {attachment.extension?.toUpperCase()}{' '}
-                        ·{' '}
-                        {formatFileSize(
-                          attachment.size
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() =>
-                        handleDownload(attachment)
-                      }
-                    >
-                      Скачать
-                    </button>
-                  </div>
-                )
-              )}
-            </div>
-          </section>
-        )}
-
-        {user.role === 'Ученик' && (
-          <div
-            style={{
-              marginTop: '28px',
-              paddingTop: '20px',
-              borderTop: '1px solid #e5e7eb',
-            }}
-          >
+          {user.role === 'Ученик' && (
             <button
               type="button"
-              className="primary-button"
-              onClick={handleCompleteLesson}
-              disabled={isCompleted}
+              className={
+                isCompleted
+                  ? 'lesson-complete-button lesson-complete-button--done'
+                  : 'lesson-complete-button'
+              }
+              disabled={
+                isCompleted ||
+                isCompleting
+              }
+              onClick={
+                handleCompleteLesson
+              }
             >
-              {isCompleted
-                ? '✅ Урок завершён'
-                : 'Завершить урок и получить награду'}
+              {isCompleting ? (
+                <RotateCcw size={18} />
+              ) : isCompleted ? (
+                <CheckCircle2
+                  size={18}
+                />
+              ) : (
+                <Trophy size={18} />
+              )}
+
+              {isCompleting
+                ? 'Завершаем...'
+                : isCompleted
+                  ? 'Урок завершён'
+                  : 'Завершить урок'}
             </button>
-          </div>
-        )}
-      </article>
+          )}
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '12px',
-          marginTop: '18px',
-          flexWrap: 'wrap',
-        }}
-      >
-        {previousLesson ? (
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() =>
-              navigate(
-                `/courses/${courseId}/lessons/${previousLesson.id}`
-              )
-            }
-          >
-            ← Предыдущий урок
-          </button>
+          <small>
+            После завершения откроется
+            следующий урок.
+          </small>
+        </aside>
+      </div>
+
+      <LessonNavigation
+        previousLesson={previousLesson}
+        nextLesson={nextLesson}
+        isCompleted={isCompleted}
+        userRole={user.role}
+        onPrevious={() =>
+          navigate(
+            `/courses/${courseId}/lessons/${previousLesson.id}`,
+          )
+        }
+        onNext={() =>
+          navigate(
+            `/courses/${courseId}/lessons/${nextLesson.id}`,
+          )
+        }
+      />
+    </div>
+  )
+}
+
+function LessonHeader({
+  course,
+  lesson,
+  lessonIndex,
+  lessonsCount,
+  progress,
+  isCompleted,
+}) {
+  return (
+    <header className="lesson-header">
+      <div className="lesson-header-main">
+        <div className="lesson-header-label">
+          <GraduationCap size={16} />
+          {course.title}
+        </div>
+
+        <span>
+          Урок {lessonIndex + 1} из{' '}
+          {lessonsCount}
+        </span>
+
+        <h1>{lesson.title}</h1>
+
+        <p>
+          {lesson.description ||
+            'Изучите материал урока и завершите его для получения награды.'}
+        </p>
+
+        <div className="lesson-header-meta">
+          <span>
+            <Clock3 size={16} />
+            {Number(
+              lesson.duration || 0,
+            )}{' '}
+            минут
+          </span>
+
+          <span>
+            <Coins size={16} />
+            +
+            {Number(
+              lesson.pointsReward || 0,
+            )}{' '}
+            баллов
+          </span>
+
+          <span>
+            <Zap size={16} />
+            +
+            {Number(
+              lesson.xpReward || 0,
+            )}{' '}
+            XP
+          </span>
+        </div>
+      </div>
+
+      <div className="lesson-header-badge">
+        {isCompleted ? (
+          <CheckCircle2 size={43} />
         ) : (
-          <span />
+          <PlayCircle size={43} />
         )}
 
-        {nextLesson && (
+        <strong>
+          {isCompleted
+            ? 'Готово'
+            : `${progress}%`}
+        </strong>
+
+        <span>
+          {isCompleted
+            ? 'урок завершён'
+            : 'прогресс курса'}
+        </span>
+      </div>
+    </header>
+  )
+}
+
+function LessonStats({ lesson }) {
+  const attachmentsCount =
+    Array.isArray(lesson.attachments)
+      ? lesson.attachments.length
+      : 0
+
+  const stats = [
+    {
+      label: 'Видео',
+      value: lesson.videoUrl
+        ? 'Доступно'
+        : 'Нет',
+      icon: Video,
+      className:
+        'lesson-stat--purple',
+    },
+    {
+      label: 'Материал',
+      value: lesson.content
+        ? 'Доступен'
+        : 'Нет',
+      icon: BookOpen,
+      className:
+        'lesson-stat--blue',
+    },
+    {
+      label: 'Файлов',
+      value: attachmentsCount,
+      icon: FileText,
+      className:
+        'lesson-stat--green',
+    },
+    {
+      label: 'Баллов',
+      value: Number(
+        lesson.pointsReward || 0,
+      ),
+      icon: Coins,
+      className:
+        'lesson-stat--gold',
+    },
+  ]
+
+  return (
+    <section className="lesson-stats">
+      {stats.map((item) => {
+        const Icon = item.icon
+
+        return (
+          <article
+            key={item.label}
+            className={`lesson-stat-card ${item.className}`}
+          >
+            <div>
+              <Icon size={21} />
+            </div>
+
+            <span>
+              <strong>{item.value}</strong>
+              <small>{item.label}</small>
+            </span>
+          </article>
+        )
+      })}
+    </section>
+  )
+}
+
+function LessonVideo({
+  lesson,
+  youtubeEmbedUrl,
+}) {
+  return (
+    <section className="lesson-section">
+      <div className="lesson-section-heading">
+        <div>
+          <p>Видеоматериал</p>
+          <h2>Видео урока</h2>
+        </div>
+
+        <Video size={23} />
+      </div>
+
+      {youtubeEmbedUrl ? (
+        <div className="lesson-video-wrapper">
+          <iframe
+            src={youtubeEmbedUrl}
+            title={lesson.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      ) : (
+        <a
+          href={lesson.videoUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="lesson-video-link"
+        >
+          <ExternalLink size={18} />
+          Открыть видео
+        </a>
+      )}
+    </section>
+  )
+}
+
+function LessonMaterial({ content }) {
+  return (
+    <section className="lesson-section">
+      <div className="lesson-section-heading">
+        <div>
+          <p>Теория</p>
+          <h2>Материал урока</h2>
+        </div>
+
+        <BookOpen size={23} />
+      </div>
+
+      <div className="lesson-material">
+        {content}
+      </div>
+    </section>
+  )
+}
+
+function LessonAttachments({
+  attachments,
+  downloadingId,
+  onDownload,
+}) {
+  return (
+    <section className="lesson-section">
+      <div className="lesson-section-heading">
+        <div>
+          <p>Дополнительные файлы</p>
+          <h2>
+            Прикреплённые материалы
+          </h2>
+        </div>
+
+        <FileText size={23} />
+      </div>
+
+      <div className="lesson-attachments">
+        {attachments.map(
+          (attachment) => {
+            const isDownloading =
+              downloadingId ===
+              attachment.id
+
+            return (
+              <article
+                key={attachment.id}
+                className="lesson-attachment-card"
+              >
+                <div className="lesson-attachment-icon">
+                  <FileText size={22} />
+                </div>
+
+                <div className="lesson-attachment-main">
+                  <strong>
+                    {attachment.name}
+                  </strong>
+
+                  <span>
+                    {attachment.extension
+                      ?.toUpperCase() ||
+                      'ФАЙЛ'}{' '}
+                    ·{' '}
+                    {formatFileSize(
+                      attachment.size,
+                    )}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isDownloading}
+                  onClick={() =>
+                    onDownload(
+                      attachment,
+                    )
+                  }
+                >
+                  {isDownloading ? (
+                    <RotateCcw
+                      size={17}
+                    />
+                  ) : (
+                    <Download
+                      size={17}
+                    />
+                  )}
+
+                  {isDownloading
+                    ? 'Загрузка...'
+                    : 'Скачать'}
+                </button>
+              </article>
+            )
+          },
+        )}
+      </div>
+    </section>
+  )
+}
+
+function LessonSidebarInfo({
+  icon: Icon,
+  label,
+  value,
+}) {
+  return (
+    <div className="lesson-sidebar-info">
+      <div>
+        <Icon size={17} />
+      </div>
+
+      <span>
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </span>
+    </div>
+  )
+}
+
+function LessonNavigation({
+  previousLesson,
+  nextLesson,
+  isCompleted,
+  userRole,
+  onPrevious,
+  onNext,
+}) {
+  return (
+    <section className="lesson-navigation">
+      <div>
+        {previousLesson && (
           <button
             type="button"
-            className="primary-button"
-            disabled={
-              user.role === 'Ученик' &&
-              !isCompleted
-            }
-            onClick={() =>
-              navigate(
-                `/courses/${courseId}/lessons/${nextLesson.id}`
-              )
-            }
+            className="lesson-navigation-secondary"
+            onClick={onPrevious}
           >
-            Следующий урок →
+            <ArrowLeft size={18} />
+
+            <span>
+              <small>
+                Предыдущий урок
+              </small>
+
+              <strong>
+                {previousLesson.title}
+              </strong>
+            </span>
           </button>
         )}
       </div>
+
+      <div>
+        {nextLesson && (
+          <button
+            type="button"
+            className="lesson-navigation-primary"
+            disabled={
+              userRole === 'Ученик' &&
+              !isCompleted
+            }
+            onClick={onNext}
+          >
+            <span>
+              <small>
+                Следующий урок
+              </small>
+
+              <strong>
+                {nextLesson.title}
+              </strong>
+            </span>
+
+            <ArrowRight size={18} />
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function LessonEmptyContent() {
+  return (
+    <section className="lesson-empty">
+      <div>
+        <BookOpen size={33} />
+      </div>
+
+      <h2>Материалы не добавлены</h2>
+
+      <p>
+        Преподаватель пока не добавил
+        видео, текст или файлы к этому
+        уроку.
+      </p>
+    </section>
+  )
+}
+
+function LessonState({
+  icon: Icon,
+  title,
+  text,
+  buttonText,
+  onClick,
+}) {
+  return (
+    <div className="lesson-page">
+      <section className="lesson-state">
+        <div>
+          <Icon size={36} />
+        </div>
+
+        <h1>{title}</h1>
+
+        <p>{text}</p>
+
+        <button
+          type="button"
+          onClick={onClick}
+        >
+          <ArrowLeft size={18} />
+          {buttonText}
+        </button>
+      </section>
     </div>
   )
+}
+
+function formatFileSize(bytes = 0) {
+  const size = Number(bytes || 0)
+
+  if (size < 1024) {
+    return `${size} Б`
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.round(
+      size / 1024,
+    )} КБ`
+  }
+
+  return `${(
+    size /
+    (1024 * 1024)
+  ).toFixed(1)} МБ`
+}
+
+function getYoutubeEmbedUrl(url = '') {
+  try {
+    if (url.includes('youtu.be/')) {
+      const videoId = url
+        .split('youtu.be/')[1]
+        ?.split('?')[0]
+
+      return videoId
+        ? `https://www.youtube.com/embed/${videoId}`
+        : null
+    }
+
+    if (
+      url.includes(
+        'youtube.com/watch',
+      )
+    ) {
+      const parsedUrl = new URL(url)
+
+      const videoId =
+        parsedUrl.searchParams.get('v')
+
+      return videoId
+        ? `https://www.youtube.com/embed/${videoId}`
+        : null
+    }
+
+    if (
+      url.includes(
+        'youtube.com/embed/',
+      )
+    ) {
+      return url
+    }
+  } catch {
+    return null
+  }
+
+  return null
 }
 
 export default LessonPage

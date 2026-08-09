@@ -5,10 +5,10 @@ import {
 } from '../services/journalService'
 
 import {
-  createLesson,
-  deleteLesson,
-  getTeacherLessons,
-} from '../services/scheduleService'
+  createScheduleLesson,
+  deleteScheduleLesson,
+  getScheduleForTeacher,
+} from '../services/supabaseScheduleService'
 
 const days = [
   'Понедельник',
@@ -27,8 +27,10 @@ function TeacherSchedulePage() {
     [user],
   )
 
-  const [refreshKey, setRefreshKey] =
-    useState(0)
+  const [allLessons, setAllLessons] =
+    useState([])
+  const [loading, setLoading] =
+    useState(true)
 
   const [selectedClass, setSelectedClass] =
     useState(classes[0] || '')
@@ -36,9 +38,7 @@ function TeacherSchedulePage() {
   const [selectedDay, setSelectedDay] =
     useState('Понедельник')
 
-  const [error, setError] =
-    useState('')
-
+  const [error, setError] = useState('')
   const [success, setSuccess] =
     useState('')
 
@@ -60,19 +60,48 @@ function TeacherSchedulePage() {
     }
   }, [classes, selectedClass])
 
+  useEffect(() => {
+    void loadLessons()
+  }, [user])
+
+  async function loadLessons() {
+    if (!user || user.role !== 'Учитель') {
+      setAllLessons([])
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError('')
+
+      const lessons =
+        await getScheduleForTeacher(user)
+
+      setAllLessons(lessons)
+    } catch (loadError) {
+      setError(
+        loadError.message ||
+          'Не удалось загрузить расписание',
+      )
+      setAllLessons([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const lessons = useMemo(
     () =>
-      getTeacherLessons(user.id).filter(
+      allLessons.filter(
         (lesson) =>
           lesson.className ===
             selectedClass &&
           lesson.day === selectedDay,
       ),
     [
-      user.id,
+      allLessons,
       selectedClass,
       selectedDay,
-      refreshKey,
     ],
   )
 
@@ -86,18 +115,21 @@ function TeacherSchedulePage() {
     }))
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
     setError('')
     setSuccess('')
 
     try {
-      createLesson(user, {
-        ...form,
-        className: selectedClass,
-        day: selectedDay,
-      })
+      await createScheduleLesson(
+        {
+          ...form,
+          className: selectedClass,
+          day: selectedDay,
+        },
+        user,
+      )
 
       setSuccess(
         'Урок добавлен в расписание',
@@ -106,23 +138,22 @@ function TeacherSchedulePage() {
       setForm((oldForm) => ({
         ...oldForm,
         lessonNumber:
-          Number(
-            oldForm.lessonNumber,
-          ) + 1,
+          Number(oldForm.lessonNumber) + 1,
         subject: '',
         classroom: '',
         description: '',
       }))
 
-      setRefreshKey(
-        (value) => value + 1,
-      )
+      await loadLessons()
     } catch (createError) {
-      setError(createError.message)
+      setError(
+        createError.message ||
+          'Не удалось добавить урок',
+      )
     }
   }
 
-  function handleDelete(lessonId) {
+  async function handleDelete(lessonId) {
     const confirmed = window.confirm(
       'Удалить этот урок из расписания?',
     )
@@ -131,14 +162,16 @@ function TeacherSchedulePage() {
       return
     }
 
-    deleteLesson(
-      lessonId,
-      user.id,
-    )
-
-    setRefreshKey(
-      (value) => value + 1,
-    )
+    try {
+      setError('')
+      await deleteScheduleLesson(lessonId)
+      await loadLessons()
+    } catch (deleteError) {
+      setError(
+        deleteError.message ||
+          'Не удалось удалить урок',
+      )
+    }
   }
 
   if (user.role !== 'Учитель') {
@@ -146,7 +179,6 @@ function TeacherSchedulePage() {
       <div className="page-container">
         <section className="content-card">
           <h2>Доступ запрещён</h2>
-
           <p>
             Создавать расписание может
             только учитель.
@@ -161,7 +193,6 @@ function TeacherSchedulePage() {
       <header className="page-header">
         <div>
           <h1>Расписание уроков</h1>
-
           <p>
             Создавайте расписание для
             школьных классов
@@ -172,7 +203,6 @@ function TeacherSchedulePage() {
       <section className="schedule-controls">
         <label className="form-group">
           <span>Класс</span>
-
           <select
             value={selectedClass}
             onChange={(event) =>
@@ -200,7 +230,6 @@ function TeacherSchedulePage() {
 
         <label className="form-group">
           <span>День недели</span>
-
           <select
             value={selectedDay}
             onChange={(event) =>
@@ -210,10 +239,7 @@ function TeacherSchedulePage() {
             }
           >
             {days.map((day) => (
-              <option
-                key={day}
-                value={day}
-              >
+              <option key={day} value={day}>
                 {day}
               </option>
             ))}
@@ -242,15 +268,12 @@ function TeacherSchedulePage() {
 
           <label className="form-group">
             <span>Номер урока</span>
-
             <input
               type="number"
               name="lessonNumber"
               min="1"
               max="12"
-              value={
-                form.lessonNumber
-              }
+              value={form.lessonNumber}
               onChange={handleChange}
               required
             />
@@ -259,7 +282,6 @@ function TeacherSchedulePage() {
           <div className="form-grid">
             <label className="form-group">
               <span>Начало</span>
-
               <input
                 type="time"
                 name="startTime"
@@ -271,7 +293,6 @@ function TeacherSchedulePage() {
 
             <label className="form-group">
               <span>Конец</span>
-
               <input
                 type="time"
                 name="endTime"
@@ -284,7 +305,6 @@ function TeacherSchedulePage() {
 
           <label className="form-group">
             <span>Предмет</span>
-
             <input
               name="subject"
               value={form.subject}
@@ -296,7 +316,6 @@ function TeacherSchedulePage() {
 
           <label className="form-group">
             <span>Кабинет</span>
-
             <input
               name="classroom"
               value={form.classroom}
@@ -307,7 +326,6 @@ function TeacherSchedulePage() {
 
           <label className="form-group">
             <span>Комментарий</span>
-
             <textarea
               name="description"
               value={form.description}
@@ -329,7 +347,6 @@ function TeacherSchedulePage() {
           <div className="schedule-list-header">
             <div>
               <h2>{selectedDay}</h2>
-
               <p>
                 Класс: {selectedClass || '—'}
               </p>
@@ -340,70 +357,70 @@ function TeacherSchedulePage() {
             </span>
           </div>
 
-          <div className="schedule-lessons-list">
-            {lessons.length === 0 && (
-              <div className="schedule-empty">
-                <span>📅</span>
-
-                <h3>
-                  Расписание пустое
-                </h3>
-
-                <p>
-                  Добавьте первый урок на
-                  этот день.
-                </p>
-              </div>
-            )}
-
-            {lessons.map((lesson) => (
-              <article
-                className="schedule-lesson-item"
-                key={lesson.id}
-              >
-                <div className="schedule-lesson-number">
-                  {lesson.lessonNumber}
-                </div>
-
-                <div className="schedule-lesson-main">
-                  <strong>
-                    {lesson.subject}
-                  </strong>
-
+          {loading ? (
+            <p>Загрузка расписания...</p>
+          ) : (
+            <div className="schedule-lessons-list">
+              {lessons.length === 0 && (
+                <div className="schedule-empty">
+                  <span>📅</span>
+                  <h3>
+                    Расписание пустое
+                  </h3>
                   <p>
-                    {lesson.startTime}–
-                    {lesson.endTime}
-                    {lesson.classroom
-                      ? ` · кабинет ${lesson.classroom}`
-                      : ''}
+                    Добавьте первый урок на
+                    этот день.
                   </p>
-
-                  {lesson.description && (
-                    <span>
-                      {lesson.description}
-                    </span>
-                  )}
-
-                  <small>
-                    Учитель:{' '}
-                    {lesson.teacherName}
-                  </small>
                 </div>
+              )}
 
-                <button
-                  type="button"
-                  className="schedule-delete-button"
-                  onClick={() =>
-                    handleDelete(
-                      lesson.id,
-                    )
-                  }
+              {lessons.map((lesson) => (
+                <article
+                  className="schedule-lesson-item"
+                  key={lesson.id}
                 >
-                  Удалить
-                </button>
-              </article>
-            ))}
-          </div>
+                  <div className="schedule-lesson-number">
+                    {lesson.lessonNumber}
+                  </div>
+
+                  <div className="schedule-lesson-main">
+                    <strong>
+                      {lesson.subject}
+                    </strong>
+
+                    <p>
+                      {lesson.startTime}–
+                      {lesson.endTime}
+                      {lesson.classroom
+                        ? ` · кабинет ${lesson.classroom}`
+                        : ''}
+                    </p>
+
+                    {lesson.description && (
+                      <span>
+                        {lesson.description}
+                      </span>
+                    )}
+
+                    <small>
+                      Учитель:{' '}
+                      {lesson.teacherName}
+                    </small>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="schedule-delete-button"
+                    onClick={() =>
+                      handleDelete(lesson.id)
+                    }
+                  >
+                    Удалить
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </div>

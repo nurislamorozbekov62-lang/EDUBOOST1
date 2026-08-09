@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import {
+  Link,
+  useNavigate,
+} from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 function LoginPage() {
@@ -12,6 +15,8 @@ function LoginPage() {
   })
 
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] =
+    useState(false)
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -22,21 +27,35 @@ function LoginPage() {
     }))
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setError('')
 
     try {
-      login(form.email, form.password)
+      setIsSubmitting(true)
+
+      await login(
+        form.email,
+        form.password,
+      )
+
       navigate('/')
     } catch (loginError) {
-      setError(loginError.message)
+      setError(
+        loginError.message ||
+          'Не удалось войти',
+      )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
+      <form
+        className="auth-card"
+        onSubmit={handleSubmit}
+      >
         <h1 className="auth-logo">
           Edu<span>Boost</span>
         </h1>
@@ -48,7 +67,9 @@ function LoginPage() {
         </p>
 
         {error && (
-          <div className="auth-error">{error}</div>
+          <div className="auth-error">
+            {error}
+          </div>
         )}
 
         <label className="form-group">
@@ -60,6 +81,7 @@ function LoginPage() {
             value={form.email}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
@@ -72,11 +94,18 @@ function LoginPage() {
             value={form.password}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
-        <button className="primary-button" type="submit">
-          Войти
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={isSubmitting}
+        >
+          {isSubmitting
+            ? 'Входим...'
+            : 'Войти'}
         </button>
 
         <p className="auth-footer">

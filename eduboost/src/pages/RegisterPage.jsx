@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import {
+  Link,
+  useNavigate,
+} from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 function RegisterPage() {
@@ -17,6 +20,8 @@ function RegisterPage() {
   })
 
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] =
+    useState(false)
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -27,7 +32,7 @@ function RegisterPage() {
     }))
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setError('')
 
@@ -39,7 +44,8 @@ function RegisterPage() {
     }
 
     if (
-      form.password !== form.passwordConfirmation
+      form.password !==
+      form.passwordConfirmation
     ) {
       setError('Пароли не совпадают')
       return
@@ -54,10 +60,18 @@ function RegisterPage() {
     }
 
     try {
-      register(form)
+      setIsSubmitting(true)
+
+      await register(form)
+
       navigate('/')
     } catch (registerError) {
-      setError(registerError.message)
+      setError(
+        registerError.message ||
+          'Не удалось создать аккаунт',
+      )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -78,7 +92,9 @@ function RegisterPage() {
         </p>
 
         {error && (
-          <div className="auth-error">{error}</div>
+          <div className="auth-error">
+            {error}
+          </div>
         )}
 
         <label className="form-group">
@@ -89,6 +105,7 @@ function RegisterPage() {
             value={form.name}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
@@ -101,6 +118,7 @@ function RegisterPage() {
             value={form.email}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
@@ -112,16 +130,20 @@ function RegisterPage() {
             value={form.role}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           >
             <option value="">
               Выберите роль
             </option>
+
             <option value="Ученик">
               Ученик
             </option>
+
             <option value="Учитель">
               Учитель
             </option>
+
             <option value="Родитель">
               Родитель
             </option>
@@ -137,6 +159,7 @@ function RegisterPage() {
             onChange={handleChange}
             placeholder="Например: Школа №1"
             required
+            disabled={isSubmitting}
           />
         </label>
 
@@ -149,25 +172,32 @@ function RegisterPage() {
               value={form.className}
               onChange={handleChange}
               required
+              disabled={isSubmitting}
             >
               <option value="">
                 Выберите класс
               </option>
+
               <option value="6 класс">
                 6 класс
               </option>
+
               <option value="7 класс">
                 7 класс
               </option>
+
               <option value="8 класс">
                 8 класс
               </option>
+
               <option value="9 класс">
                 9 класс
               </option>
+
               <option value="10 класс">
                 10 класс
               </option>
+
               <option value="11 класс">
                 11 класс
               </option>
@@ -184,6 +214,7 @@ function RegisterPage() {
             value={form.password}
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
@@ -193,17 +224,23 @@ function RegisterPage() {
           <input
             type="password"
             name="passwordConfirmation"
-            value={form.passwordConfirmation}
+            value={
+              form.passwordConfirmation
+            }
             onChange={handleChange}
             required
+            disabled={isSubmitting}
           />
         </label>
 
         <button
           className="primary-button"
           type="submit"
+          disabled={isSubmitting}
         >
-          Создать аккаунт
+          {isSubmitting
+            ? 'Создаём аккаунт...'
+            : 'Создать аккаунт'}
         </button>
 
         <p className="auth-footer">

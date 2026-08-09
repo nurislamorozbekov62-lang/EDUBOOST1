@@ -20,10 +20,10 @@ import {
 } from '../services/parentService'
 
 import {
-  getClassSchedule,
-  getNextLesson,
+  getNextLessonFromSchedule,
+  getScheduleForStudent,
   getTodayName,
-} from '../services/scheduleService'
+} from '../services/supabaseScheduleService'
 
 const days = [
   'Понедельник',
@@ -36,6 +36,13 @@ const days = [
 
 function StudentSchedulePage() {
   const { user } = useAuth()
+
+  const [schedule, setSchedule] =
+    useState([])
+  const [loading, setLoading] =
+    useState(true)
+  const [scheduleError, setScheduleError] =
+    useState('')
 
   const linkedStudents = useMemo(
     () =>
@@ -87,12 +94,39 @@ function StudentSchedulePage() {
       : 'Понедельник',
   )
 
-  const schedule = student
-    ? getClassSchedule(
-        student.school,
-        student.className,
+  useEffect(() => {
+    void loadSchedule()
+  }, [
+    student?.id,
+    student?.school,
+    student?.className,
+  ])
+
+  async function loadSchedule() {
+    if (!student) {
+      setSchedule([])
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setScheduleError('')
+
+      const lessons =
+        await getScheduleForStudent(student)
+
+      setSchedule(lessons)
+    } catch (error) {
+      setSchedule([])
+      setScheduleError(
+        error.message ||
+          'Не удалось загрузить расписание',
       )
-    : []
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const selectedDayLessons =
     schedule
@@ -110,12 +144,8 @@ function StudentSchedulePage() {
           ),
       )
 
-  const nextLesson = student
-    ? getNextLesson(
-        student.school,
-        student.className,
-      )
-    : null
+  const nextLesson =
+    getNextLessonFromSchedule(schedule)
 
   const todayLessonsCount =
     schedule.filter(
@@ -183,6 +213,30 @@ function StudentSchedulePage() {
           icon={UserRound}
           title="Ребёнок не привязан"
           text="Откройте родительский кабинет и введите код ученика."
+        />
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="schedule-page">
+        <ScheduleEmptyState
+          icon={CalendarDays}
+          title="Загрузка расписания"
+          text="Получаем уроки из Supabase..."
+        />
+      </div>
+    )
+  }
+
+  if (scheduleError) {
+    return (
+      <div className="schedule-page">
+        <ScheduleEmptyState
+          icon={CalendarDays}
+          title="Не удалось загрузить расписание"
+          text={scheduleError}
         />
       </div>
     )
