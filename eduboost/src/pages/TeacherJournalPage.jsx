@@ -11,6 +11,7 @@ import {
 
 import { useAuth } from '../context/AuthContext'
 import TeacherAttendancePanel from '../components/TeacherAttendancePanel'
+import TeacherJournalMobile from '../components/TeacherJournalMobile'
 
 import {
   GRADE_TYPES,
@@ -59,13 +60,23 @@ function TeacherJournalPage() {
   const [classes, setClasses] = useState([])
   const [students, setStudents] = useState([])
 
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return window.innerWidth <= 760
+  })
+
   const [selectedClass, setSelectedClass] = useState('')
-  const [selectedSubject, setSelectedSubject] = useState('Математика')
+  const [selectedSubject, setSelectedSubject] =
+    useState('Математика')
   const [selectedQuarter, setSelectedQuarter] = useState(1)
 
   const [grades, setGrades] = useState([])
   const [lessons, setLessons] = useState([])
-  const [finalQuarterGrades, setFinalQuarterGrades] = useState([])
+  const [finalQuarterGrades, setFinalQuarterGrades] =
+    useState([])
 
   const [minimumGrades, setMinimumGrades] = useState(3)
 
@@ -73,16 +84,24 @@ function TeacherJournalPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  /*
-   * gradeModal:
-   * {
-   *   student,
-   *   date
-   * }
-   */
   const [gradeModal, setGradeModal] = useState(null)
   const [selectedGrade, setSelectedGrade] = useState(null)
-  const [lessonModalOpen, setLessonModalOpen] = useState(false)
+  const [lessonModalOpen, setLessonModalOpen] =
+    useState(false)
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 760)
+    }
+
+    handleResize()
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
 
   useEffect(() => {
     if (!user?.id || user.role !== 'Учитель') {
@@ -125,13 +144,17 @@ function TeacherJournalPage() {
       setLoading(true)
       setError('')
 
-      const data = await getSupabaseSchoolClassesForTeacher(user)
+      const data =
+        await getSupabaseSchoolClassesForTeacher(user)
 
       setClasses(data)
 
       if (data.length > 0) {
         setSelectedClass((currentClass) => {
-          if (currentClass && data.includes(currentClass)) {
+          if (
+            currentClass &&
+            data.includes(currentClass)
+          ) {
             return currentClass
           }
 
@@ -175,40 +198,34 @@ function TeacherJournalPage() {
       setLoading(true)
       setError('')
 
-      /*
-       * Оценки и даты уроков —
-       * основные данные журнала.
-       */
-      const [gradeRows, lessonRows] = await Promise.all([
-        getSupabaseClassGrades({
-          teacher: user,
-          className: selectedClass,
-          subject: selectedSubject,
-          quarter: selectedQuarter,
-        }),
+      const [gradeRows, lessonRows] =
+        await Promise.all([
+          getSupabaseClassGrades({
+            teacher: user,
+            className: selectedClass,
+            subject: selectedSubject,
+            quarter: selectedQuarter,
+          }),
 
-        getSupabaseJournalLessons({
-          teacher: user,
-          className: selectedClass,
-          subject: selectedSubject,
-          quarter: selectedQuarter,
-        }),
-      ])
+          getSupabaseJournalLessons({
+            teacher: user,
+            className: selectedClass,
+            subject: selectedSubject,
+            quarter: selectedQuarter,
+          }),
+        ])
 
       setGrades(gradeRows)
       setLessons(lessonRows)
 
-      /*
-       * Четвертные оценки загружаем отдельно,
-       * чтобы ошибка тут не ломала обычный журнал.
-       */
       try {
-        const finalRows = await getSupabaseClassQuarterGrades({
-          teacher: user,
-          className: selectedClass,
-          subject: selectedSubject,
-          quarter: selectedQuarter,
-        })
+        const finalRows =
+          await getSupabaseClassQuarterGrades({
+            teacher: user,
+            className: selectedClass,
+            subject: selectedSubject,
+            quarter: selectedQuarter,
+          })
 
         setFinalQuarterGrades(finalRows)
       } catch (quarterError) {
@@ -216,9 +233,6 @@ function TeacherJournalPage() {
         setFinalQuarterGrades([])
       }
 
-      /*
-       * Настройка минимального количества оценок.
-       */
       try {
         const minimum = await getGradingMinimum({
           teacher: user,
@@ -241,15 +255,6 @@ function TeacherJournalPage() {
     }
   }
 
-  /*
-   * Важный момент:
-   *
-   * Колонки строятся не только из journal_lessons,
-   * но и из уже существующих оценок.
-   *
-   * Поэтому старые оценки НЕ исчезнут,
-   * даже если для них раньше не создавали урок.
-   */
   const columns = useMemo(() => {
     const map = new Map()
 
@@ -286,7 +291,8 @@ function TeacherJournalPage() {
         (grade) => grade.studentId === student.id,
       )
 
-      const average = calculateWeightedAverage(studentGrades)
+      const average =
+        calculateWeightedAverage(studentGrades)
 
       const isAttested =
         studentGrades.length >= Number(minimumGrades)
@@ -307,7 +313,8 @@ function TeacherJournalPage() {
         finalGrade: finalRow?.finalGrade ?? null,
         isAttested,
         missing: Math.max(
-          Number(minimumGrades) - studentGrades.length,
+          Number(minimumGrades) -
+            studentGrades.length,
           0,
         ),
       }
@@ -406,9 +413,9 @@ function TeacherJournalPage() {
       <div className="page-container">
         <section className="content-card">
           <h2>Доступ запрещён</h2>
-
           <p>
-            Электронный журнал доступен только учителям.
+            Электронный журнал доступен только
+            учителям.
           </p>
         </section>
       </div>
@@ -420,9 +427,9 @@ function TeacherJournalPage() {
       <header className="page-header">
         <div>
           <h1>Электронный журнал</h1>
-
           <p>
-            Оценки, даты уроков и посещаемость класса.
+            Оценки, даты уроков и посещаемость
+            класса.
           </p>
         </div>
       </header>
@@ -435,7 +442,9 @@ function TeacherJournalPage() {
             <select
               value={selectedClass}
               onChange={(event) =>
-                setSelectedClass(event.target.value)
+                setSelectedClass(
+                  event.target.value,
+                )
               }
             >
               {classes.length === 0 && (
@@ -461,7 +470,9 @@ function TeacherJournalPage() {
             <select
               value={selectedSubject}
               onChange={(event) =>
-                setSelectedSubject(event.target.value)
+                setSelectedSubject(
+                  event.target.value,
+                )
               }
             >
               {SUBJECTS.map((subject) => (
@@ -491,15 +502,12 @@ function TeacherJournalPage() {
                   <option value={1}>
                     1 четверть
                   </option>
-
                   <option value={2}>
                     2 четверть
                   </option>
-
                   <option value={3}>
                     3 четверть
                   </option>
-
                   <option value={4}>
                     4 четверть
                   </option>
@@ -517,7 +525,9 @@ function TeacherJournalPage() {
                     value={minimumGrades}
                     onChange={(event) =>
                       setMinimumGrades(
-                        Number(event.target.value),
+                        Number(
+                          event.target.value,
+                        ),
                       )
                     }
                   />
@@ -550,7 +560,9 @@ function TeacherJournalPage() {
 
         <button
           type="button"
-          onClick={() => changeTab('attendance')}
+          onClick={() =>
+            changeTab('attendance')
+          }
           style={tabButtonStyle(
             activeTab === 'attendance',
           )}
@@ -585,7 +597,11 @@ function TeacherJournalPage() {
                 {selectedSubject}
               </p>
 
-              <h2 style={{ margin: '4px 0 0' }}>
+              <h2
+                style={{
+                  margin: '4px 0 0',
+                }}
+              >
                 {selectedQuarter} четверть
               </h2>
             </div>
@@ -610,9 +626,9 @@ function TeacherJournalPage() {
           </div>
 
           <div style={hintStyle}>
-            💡 Нажмите на пустую клетку в журнале,
-            чтобы сразу выставить оценку ученику
-            на выбранную дату.
+            {isMobile
+              ? '📱 Выберите дату урока и нажмите «Поставить» возле нужного ученика.'
+              : '💡 Нажмите на пустую клетку в журнале, чтобы сразу выставить оценку ученику на выбранную дату.'}
           </div>
 
           {loading ? (
@@ -623,14 +639,38 @@ function TeacherJournalPage() {
             <p className="empty-text">
               В этом классе пока нет учеников.
             </p>
+          ) : isMobile ? (
+            <TeacherJournalMobile
+              rows={rows}
+              columns={columns}
+              selectedSubject={
+                selectedSubject
+              }
+              selectedQuarter={
+                selectedQuarter
+              }
+              onAddGrade={openGradeModal}
+              onEditGrade={
+                setSelectedGrade
+              }
+              onConfirmQuarter={
+                handleConfirmQuarter
+              }
+            />
           ) : (
             <JournalTable
               rows={rows}
               columns={columns}
-              selectedSubject={selectedSubject}
-              selectedQuarter={selectedQuarter}
+              selectedSubject={
+                selectedSubject
+              }
+              selectedQuarter={
+                selectedQuarter
+              }
               onAddGrade={openGradeModal}
-              onEditGrade={setSelectedGrade}
+              onEditGrade={
+                setSelectedGrade
+              }
               onConfirmQuarter={
                 handleConfirmQuarter
               }
@@ -697,7 +737,8 @@ function TeacherJournalPage() {
         <EditGradeModal
           grade={selectedGrade}
           canDelete={
-            selectedGrade.teacherId === user.id
+            selectedGrade.teacherId ===
+            user.id
           }
           onClose={() =>
             setSelectedGrade(null)
@@ -763,10 +804,14 @@ function JournalTable({
                 }
               >
                 <div>
-                  {formatShortDate(column.date)}
+                  {formatShortDate(
+                    column.date,
+                  )}
                 </div>
 
-                <small style={dateTopicStyle}>
+                <small
+                  style={dateTopicStyle}
+                >
                   {column.topic || 'Урок'}
                 </small>
               </th>
@@ -793,10 +838,17 @@ function JournalTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.student.id}>
-              <td style={stickyNameCellStyle}>
-                <div style={studentCellStyle}>
+              <td
+                style={stickyNameCellStyle}
+              >
+                <div
+                  style={studentCellStyle}
+                >
                   <div style={avatarStyle}>
-                    {String(row.student.name || 'У')
+                    {String(
+                      row.student.name ||
+                        'У',
+                    )
                       .charAt(0)
                       .toUpperCase()}
                   </div>
@@ -806,7 +858,11 @@ function JournalTable({
                       {row.student.name}
                     </strong>
 
-                    <div style={studentMetaStyle}>
+                    <div
+                      style={
+                        studentMetaStyle
+                      }
+                    >
                       {selectedSubject}
                       {' · '}
                       {selectedQuarter}
@@ -820,7 +876,8 @@ function JournalTable({
                 const cellGrades =
                   row.grades.filter(
                     (grade) =>
-                      grade.date === column.date,
+                      grade.date ===
+                      column.date,
                   )
 
                 return (
@@ -828,7 +885,8 @@ function JournalTable({
                     key={column.date}
                     style={bodyCellStyle}
                   >
-                    {cellGrades.length === 0 ? (
+                    {cellGrades.length ===
+                    0 ? (
                       <button
                         type="button"
                         onClick={() =>
@@ -837,7 +895,9 @@ function JournalTable({
                             column.date,
                           )
                         }
-                        style={emptyCellButtonStyle}
+                        style={
+                          emptyCellButtonStyle
+                        }
                         title={`Поставить оценку за ${formatFullDate(
                           column.date,
                         )}`}
@@ -845,22 +905,34 @@ function JournalTable({
                         <Plus size={17} />
                       </button>
                     ) : (
-                      <div style={cellGradesStyle}>
-                        {cellGrades.map((grade) => (
-                          <button
-                            type="button"
-                            key={grade.id}
-                            onClick={() =>
-                              onEditGrade(grade)
-                            }
-                            title="Изменить оценку"
-                            style={gradeButtonStyle(
-                              grade.value,
-                            )}
-                          >
-                            {grade.value}
-                          </button>
-                        ))}
+                      <div
+                        style={
+                          cellGradesStyle
+                        }
+                      >
+                        {cellGrades.map(
+                          (grade) => (
+                            <button
+                              type="button"
+                              key={
+                                grade.id
+                              }
+                              onClick={() =>
+                                onEditGrade(
+                                  grade,
+                                )
+                              }
+                              title="Изменить оценку"
+                              style={gradeButtonStyle(
+                                grade.value,
+                              )}
+                            >
+                              {
+                                grade.value
+                              }
+                            </button>
+                          ),
+                        )}
 
                         <button
                           type="button"
@@ -870,10 +942,14 @@ function JournalTable({
                               column.date,
                             )
                           }
-                          style={smallAddButtonStyle}
+                          style={
+                            smallAddButtonStyle
+                          }
                           title="Добавить ещё одну оценку"
                         >
-                          <Plus size={13} />
+                          <Plus
+                            size={13}
+                          />
                         </button>
                       </div>
                     )}
@@ -907,7 +983,8 @@ function JournalTable({
               </td>
 
               <td style={bodyCellStyle}>
-                {row.finalGrade !== null ? (
+                {row.finalGrade !==
+                null ? (
                   <span
                     style={resultBadgeStyle(
                       row.finalGrade,
@@ -919,17 +996,27 @@ function JournalTable({
                   <button
                     type="button"
                     onClick={() =>
-                      onConfirmQuarter(row)
+                      onConfirmQuarter(
+                        row,
+                      )
                     }
-                    style={confirmButtonStyle}
+                    style={
+                      confirmButtonStyle
+                    }
                     title="Подтвердить четвертную"
                   >
                     {row.predicted}
 
-                    <ChevronRight size={15} />
+                    <ChevronRight
+                      size={15}
+                    />
                   </button>
                 ) : (
-                  <span style={{ opacity: 0.35 }}>
+                  <span
+                    style={{
+                      opacity: 0.35,
+                    }}
+                  >
                     —
                   </span>
                 )}
@@ -939,7 +1026,9 @@ function JournalTable({
                 <button
                   type="button"
                   onClick={() =>
-                    onAddGrade(row.student)
+                    onAddGrade(
+                      row.student,
+                    )
                   }
                   style={addButtonStyle}
                   title="Добавить оценку"
@@ -961,8 +1050,9 @@ function JournalTable({
           </strong>
 
           <p>
-            Нажмите «Добавить дату», чтобы
-            создать первую колонку журнала.
+            Нажмите «Добавить дату»,
+            чтобы создать первую колонку
+            журнала.
           </p>
         </div>
       )}
@@ -982,11 +1072,11 @@ function CreateLessonModal({
     date: new Date()
       .toISOString()
       .slice(0, 10),
-
     topic: '',
   })
 
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] =
+    useState(false)
   const [error, setError] = useState('')
 
   async function handleSubmit(event) {
@@ -1044,10 +1134,13 @@ function CreateLessonModal({
             required
             value={form.date}
             onChange={(event) =>
-              setForm((currentForm) => ({
-                ...currentForm,
-                date: event.target.value,
-              }))
+              setForm(
+                (currentForm) => ({
+                  ...currentForm,
+                  date:
+                    event.target.value,
+                }),
+              )
             }
           />
         </label>
@@ -1058,10 +1151,13 @@ function CreateLessonModal({
           <input
             value={form.topic}
             onChange={(event) =>
-              setForm((currentForm) => ({
-                ...currentForm,
-                topic: event.target.value,
-              }))
+              setForm(
+                (currentForm) => ({
+                  ...currentForm,
+                  topic:
+                    event.target.value,
+                }),
+              )
             }
             placeholder="Например: Квадратные уравнения"
           />
@@ -1071,7 +1167,9 @@ function CreateLessonModal({
           type="submit"
           className="primary-button"
           disabled={saving}
-          style={{ width: '100%' }}
+          style={{
+            width: '100%',
+          }}
         >
           <CalendarPlus size={18} />
 
@@ -1105,7 +1203,8 @@ function CreateGradeModal({
         .slice(0, 10),
   })
 
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] =
+    useState(false)
   const [error, setError] = useState('')
 
   async function handleSubmit(event) {
@@ -1168,7 +1267,9 @@ function CreateGradeModal({
           type="submit"
           className="primary-button"
           disabled={saving}
-          style={{ width: '100%' }}
+          style={{
+            width: '100%',
+          }}
         >
           {saving
             ? 'Сохраняем...'
@@ -1188,7 +1289,8 @@ function EditGradeModal({
 }) {
   const [form, setForm] = useState({
     value: String(grade.value),
-    workType: grade.workType || 'homework',
+    workType:
+      grade.workType || 'homework',
     topic: grade.topic || '',
     comment: grade.comment || '',
     date:
@@ -1198,8 +1300,10 @@ function EditGradeModal({
         .slice(0, 10),
   })
 
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [saving, setSaving] =
+    useState(false)
+  const [deleting, setDeleting] =
+    useState(false)
   const [error, setError] = useState('')
 
   async function handleSubmit(event) {
@@ -1266,7 +1370,8 @@ function EditGradeModal({
           <Pencil size={17} />
 
           <span>
-            Изменения сразу увидит ученик.
+            Изменения сразу увидит
+            ученик.
           </span>
         </div>
 
@@ -1285,14 +1390,18 @@ function EditGradeModal({
           style={{
             display: 'grid',
             gridTemplateColumns:
-              canDelete ? '1fr 1fr' : '1fr',
+              canDelete
+                ? '1fr 1fr'
+                : '1fr',
             gap: 10,
           }}
         >
           <button
             type="submit"
             className="primary-button"
-            disabled={saving || deleting}
+            disabled={
+              saving || deleting
+            }
           >
             {saving
               ? 'Сохраняем...'
@@ -1303,8 +1412,12 @@ function EditGradeModal({
             <button
               type="button"
               onClick={handleDelete}
-              disabled={saving || deleting}
-              style={deleteButtonStyle}
+              disabled={
+                saving || deleting
+              }
+              style={
+                deleteButtonStyle
+              }
             >
               <Trash2 size={18} />
 
@@ -1332,10 +1445,13 @@ function GradeFormFields({
           <select
             value={form.value}
             onChange={(event) =>
-              setForm((currentForm) => ({
-                ...currentForm,
-                value: event.target.value,
-              }))
+              setForm(
+                (currentForm) => ({
+                  ...currentForm,
+                  value:
+                    event.target.value,
+                }),
+              )
             }
           >
             <option value="5">5</option>
@@ -1354,10 +1470,13 @@ function GradeFormFields({
             required
             value={form.date}
             onChange={(event) =>
-              setForm((currentForm) => ({
-                ...currentForm,
-                date: event.target.value,
-              }))
+              setForm(
+                (currentForm) => ({
+                  ...currentForm,
+                  date:
+                    event.target.value,
+                }),
+              )
             }
           />
         </label>
@@ -1369,10 +1488,13 @@ function GradeFormFields({
         <select
           value={form.workType}
           onChange={(event) =>
-            setForm((currentForm) => ({
-              ...currentForm,
-              workType: event.target.value,
-            }))
+            setForm(
+              (currentForm) => ({
+                ...currentForm,
+                workType:
+                  event.target.value,
+              }),
+            )
           }
         >
           {GRADE_TYPES.map((type) => (
@@ -1392,10 +1514,13 @@ function GradeFormFields({
         <input
           value={form.topic}
           onChange={(event) =>
-            setForm((currentForm) => ({
-              ...currentForm,
-              topic: event.target.value,
-            }))
+            setForm(
+              (currentForm) => ({
+                ...currentForm,
+                topic:
+                  event.target.value,
+              }),
+            )
           }
           placeholder="Например: Квадратные уравнения"
         />
@@ -1407,10 +1532,13 @@ function GradeFormFields({
         <textarea
           value={form.comment}
           onChange={(event) =>
-            setForm((currentForm) => ({
-              ...currentForm,
-              comment: event.target.value,
-            }))
+            setForm(
+              (currentForm) => ({
+                ...currentForm,
+                comment:
+                  event.target.value,
+              }),
+            )
           }
           placeholder="Комментарий для ученика"
         />
@@ -1464,7 +1592,8 @@ function ModalShell({
     <div
       onMouseDown={(event) => {
         if (
-          event.target === event.currentTarget
+          event.target ===
+          event.currentTarget
         ) {
           onClose()
         }
@@ -1505,9 +1634,7 @@ function formatFullDate(value) {
     `${value}T12:00:00`,
   )
 
-  if (
-    Number.isNaN(date.getTime())
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return 'Дата не указана'
   }
 
@@ -1652,7 +1779,8 @@ const tableWrapperStyle = {
 const headerCellStyle = {
   padding: 12,
   textAlign: 'center',
-  borderBottom: '1px solid #e5e7eb',
+  borderBottom:
+    '1px solid #e5e7eb',
   background: '#f8fafc',
   whiteSpace: 'nowrap',
   fontSize: 13,
@@ -1678,7 +1806,8 @@ const dateTopicStyle = {
 const bodyCellStyle = {
   padding: 8,
   textAlign: 'center',
-  borderBottom: '1px solid #eef2f7',
+  borderBottom:
+    '1px solid #eef2f7',
   minWidth: 68,
 }
 
@@ -1728,7 +1857,8 @@ const emptyCellButtonStyle = {
   width: 42,
   height: 38,
   borderRadius: 10,
-  border: '1px dashed #cbd5e1',
+  border:
+    '1px dashed #cbd5e1',
   background: '#ffffff',
   color: '#94a3b8',
   cursor: 'pointer',
@@ -1748,7 +1878,8 @@ const smallAddButtonStyle = {
   width: 25,
   height: 25,
   borderRadius: 8,
-  border: '1px dashed #cbd5e1',
+  border:
+    '1px dashed #cbd5e1',
   background: '#ffffff',
   color: '#64748b',
   cursor: 'pointer',
@@ -1760,7 +1891,8 @@ const addButtonStyle = {
   width: 36,
   height: 36,
   borderRadius: 10,
-  border: '1px solid #dbeafe',
+  border:
+    '1px solid #dbeafe',
   background: '#eff6ff',
   color: '#2563eb',
   display: 'inline-grid',
@@ -1815,7 +1947,8 @@ const modalBackdropStyle = {
   position: 'fixed',
   inset: 0,
   zIndex: 1000,
-  background: 'rgba(15, 23, 42, 0.45)',
+  background:
+    'rgba(15, 23, 42, 0.45)',
   display: 'grid',
   placeItems: 'center',
   padding: 20,
@@ -1835,7 +1968,8 @@ const modalCardStyle = {
 const modalHeaderStyle = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'space-between',
+  justifyContent:
+    'space-between',
   gap: 16,
   marginBottom: 18,
 }
@@ -1849,7 +1983,8 @@ const iconButtonStyle = {
   width: 38,
   height: 38,
   borderRadius: 10,
-  border: '1px solid #e2e8f0',
+  border:
+    '1px solid #e2e8f0',
   background: '#ffffff',
   cursor: 'pointer',
   display: 'grid',
@@ -1877,7 +2012,8 @@ const editInfoStyle = {
 }
 
 const deleteButtonStyle = {
-  border: '1px solid #fecaca',
+  border:
+    '1px solid #fecaca',
   borderRadius: 12,
   minHeight: 44,
   background: '#fff1f2',
