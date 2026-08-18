@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 
+
 export const GRADE_TYPES = [
   {
     value: 'control',
@@ -43,6 +44,11 @@ export const GRADE_TYPES = [
   },
 ]
 
+
+/* ========================================
+   CREATE GRADE
+======================================== */
+
 export async function createSupabaseGrade(
   teacher,
   student,
@@ -54,17 +60,25 @@ export async function createSupabaseGrade(
     )
   }
 
+
   if (!student?.id) {
     throw new Error(
       'Не выбран ученик.',
     )
   }
 
-  if (!student?.school) {
+
+  if (
+    !student?.school &&
+    !student?.schoolId &&
+    !teacher?.school &&
+    !teacher?.schoolId
+  ) {
     throw new Error(
-      'У ученика не указана школа.',
+      'Не удалось определить школу.',
     )
   }
+
 
   if (!student?.className) {
     throw new Error(
@@ -72,18 +86,25 @@ export async function createSupabaseGrade(
     )
   }
 
+
   if (!form?.subject) {
     throw new Error(
       'Выберите предмет.',
     )
   }
 
-  const gradeValue = Number(
-    form.grade ?? form.value,
-  )
+
+  const gradeValue =
+    Number(
+      form.grade ??
+        form.value,
+    )
+
 
   if (
-    !Number.isInteger(gradeValue) ||
+    !Number.isInteger(
+      gradeValue,
+    ) ||
     gradeValue < 1 ||
     gradeValue > 5
   ) {
@@ -92,12 +113,18 @@ export async function createSupabaseGrade(
     )
   }
 
-  const quarter = Number(
-    form.quarter || 1,
-  )
+
+  const quarter =
+    Number(
+      form.quarter ||
+        1,
+    )
+
 
   if (
-    !Number.isInteger(quarter) ||
+    !Number.isInteger(
+      quarter,
+    ) ||
     quarter < 1 ||
     quarter > 4
   ) {
@@ -106,14 +133,24 @@ export async function createSupabaseGrade(
     )
   }
 
+
   const workType =
     normalizeWorkType(
       form.workType ||
         form.gradeType,
     )
 
+
   const payload = {
-    school: student.school,
+    school:
+      student.school ||
+      teacher.school ||
+      null,
+
+    school_id:
+      student.schoolId ||
+      teacher.schoolId ||
+      null,
 
     class_name:
       student.className,
@@ -128,7 +165,8 @@ export async function createSupabaseGrade(
       teacher.id,
 
     teacher_name:
-      teacher.name || '',
+      teacher.name ||
+      '',
 
     grade:
       gradeValue,
@@ -144,38 +182,44 @@ export async function createSupabaseGrade(
     quarter,
 
     topic:
-      form.topic?.trim() || '',
+      String(
+        form.topic ||
+          '',
+      ).trim(),
 
     comment:
-      form.comment?.trim() || '',
+      String(
+        form.comment ||
+          '',
+      ).trim(),
 
     grade_date:
       form.date ||
-      new Date()
-        .toISOString()
-        .slice(0, 10),
+      getToday(),
+
+    journal_lesson_id:
+      form.journalLessonId ||
+      null,
   }
 
-  console.log(
-    'Отправляем оценку:',
-    payload,
-  )
 
-  const { data, error } =
+  const {
+    data,
+    error,
+  } =
     await supabase
       .from('grades')
-      .insert(payload)
+      .insert(
+        payload,
+      )
       .select('*')
       .single()
+
 
   if (error) {
     console.error(
       'Ошибка Supabase grades:',
       error,
-    )
-
-    window.alert(
-      `Не удалось поставить оценку.\n\n${error.message}`,
     )
 
     throw new Error(
@@ -184,13 +228,65 @@ export async function createSupabaseGrade(
     )
   }
 
-  console.log(
-    'Оценка сохранена:',
+
+  return normalizeGrade(
     data,
   )
-
-  return normalizeGrade(data)
 }
+
+
+/* ========================================
+   CREATE GRADE FOR JOURNAL LESSON
+======================================== */
+
+export async function createSupabaseJournalLessonGrade({
+  teacher,
+  student,
+  lesson,
+  grade,
+  workType = 'oral',
+  comment = '',
+}) {
+  if (!lesson?.id) {
+    throw new Error(
+      'Урок не найден.',
+    )
+  }
+
+
+  return createSupabaseGrade(
+    teacher,
+    student,
+    {
+      grade,
+
+      subject:
+        lesson.subject,
+
+      quarter:
+        lesson.quarter,
+
+      topic:
+        lesson.topic ||
+        '',
+
+      date:
+        lesson.date,
+
+      workType,
+
+      comment,
+
+      journalLessonId:
+        lesson.id,
+    },
+  )
+}
+
+
+/* ========================================
+   DELETE GRADE
+======================================== */
 
 export async function deleteSupabaseGrade(
   gradeId,
@@ -199,23 +295,79 @@ export async function deleteSupabaseGrade(
     return
   }
 
-  const { error } =
+
+  const {
+    error,
+  } =
     await supabase
       .from('grades')
       .delete()
-      .eq('id', gradeId)
+      .eq(
+        'id',
+        gradeId,
+      )
+
 
   if (error) {
-    window.alert(
-      `Не удалось удалить оценку.\n\n${error.message}`,
-    )
-
     throw new Error(
       error.message ||
         'Не удалось удалить оценку.',
     )
   }
 }
+
+
+/* ========================================
+   GET GRADES FOR ONE JOURNAL LESSON
+======================================== */
+
+export async function getSupabaseGradesForJournalLesson(
+  journalLessonId,
+) {
+  if (!journalLessonId) {
+    return []
+  }
+
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from('grades')
+      .select('*')
+      .eq(
+        'journal_lesson_id',
+        journalLessonId,
+      )
+      .order(
+        'created_at',
+        {
+          ascending: true,
+        },
+      )
+
+
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Не удалось загрузить оценки урока.',
+    )
+  }
+
+
+  return (
+    data ||
+    []
+  ).map(
+    normalizeGrade,
+  )
+}
+
+
+/* ========================================
+   STUDENT GRADES
+======================================== */
 
 export async function getSupabaseStudentGrades(
   studentId,
@@ -224,7 +376,11 @@ export async function getSupabaseStudentGrades(
     return []
   }
 
-  const { data, error } =
+
+  const {
+    data,
+    error,
+  } =
     await supabase
       .from('grades')
       .select('*')
@@ -232,12 +388,19 @@ export async function getSupabaseStudentGrades(
         'student_id',
         studentId,
       )
-      .order('grade_date', {
-        ascending: false,
-      })
-      .order('created_at', {
-        ascending: false,
-      })
+      .order(
+        'grade_date',
+        {
+          ascending: false,
+        },
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      )
+
 
   if (error) {
     throw new Error(
@@ -246,10 +409,19 @@ export async function getSupabaseStudentGrades(
     )
   }
 
-  return (data || []).map(
+
+  return (
+    data ||
+    []
+  ).map(
     normalizeGrade,
   )
 }
+
+
+/* ========================================
+   STUDENT QUARTER GRADES
+======================================== */
 
 export async function getSupabaseStudentQuarterGrades(
   studentId,
@@ -259,7 +431,11 @@ export async function getSupabaseStudentQuarterGrades(
     return []
   }
 
-  const { data, error } =
+
+  const {
+    data,
+    error,
+  } =
     await supabase
       .from('grades')
       .select('*')
@@ -269,14 +445,23 @@ export async function getSupabaseStudentQuarterGrades(
       )
       .eq(
         'quarter',
-        Number(quarter),
+        Number(
+          quarter,
+        ),
       )
-      .order('grade_date', {
-        ascending: false,
-      })
-      .order('created_at', {
-        ascending: false,
-      })
+      .order(
+        'grade_date',
+        {
+          ascending: false,
+        },
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      )
+
 
   if (error) {
     throw new Error(
@@ -285,10 +470,19 @@ export async function getSupabaseStudentQuarterGrades(
     )
   }
 
-  return (data || []).map(
+
+  return (
+    data ||
+    []
+  ).map(
     normalizeGrade,
   )
 }
+
+
+/* ========================================
+   CALCULATE QUARTER
+======================================== */
 
 export async function calculateQuarterResult(
   studentId,
@@ -302,7 +496,11 @@ export async function calculateQuarterResult(
     return emptyQuarterResult()
   }
 
-  const { data, error } =
+
+  const {
+    data,
+    error,
+  } =
     await supabase.rpc(
       'calculate_quarter_grade',
       {
@@ -313,9 +511,12 @@ export async function calculateQuarterResult(
           subject,
 
         target_quarter:
-          Number(quarter),
+          Number(
+            quarter,
+          ),
       },
     )
+
 
   if (error) {
     console.error(
@@ -329,12 +530,15 @@ export async function calculateQuarterResult(
     )
   }
 
+
   const result =
     data?.[0]
+
 
   if (!result) {
     return emptyQuarterResult()
   }
+
 
   return {
     weightedAverage:
@@ -378,6 +582,11 @@ export async function calculateQuarterResult(
   }
 }
 
+
+/* ========================================
+   GRADING SETTINGS
+======================================== */
+
 export async function saveGradingSettings(
   teacher,
   className,
@@ -386,12 +595,16 @@ export async function saveGradingSettings(
 ) {
   if (
     !teacher?.id ||
-    !teacher?.school
+    (
+      !teacher?.school &&
+      !teacher?.schoolId
+    )
   ) {
     throw new Error(
       'Не найден профиль учителя.',
     )
   }
+
 
   if (!className) {
     throw new Error(
@@ -399,11 +612,17 @@ export async function saveGradingSettings(
     )
   }
 
+
   const minimum =
-    Number(minGrades)
+    Number(
+      minGrades,
+    )
+
 
   if (
-    !Number.isInteger(minimum) ||
+    !Number.isInteger(
+      minimum,
+    ) ||
     minimum < 1 ||
     minimum > 30
   ) {
@@ -412,29 +631,43 @@ export async function saveGradingSettings(
     )
   }
 
-  const { data, error } =
+
+  const payload = {
+    school:
+      teacher.school ||
+      null,
+
+    school_id:
+      teacher.schoolId ||
+      null,
+
+    class_name:
+      className,
+
+    subject,
+
+    min_grades:
+      minimum,
+
+    created_by:
+      teacher.id,
+
+    updated_at:
+      new Date()
+        .toISOString(),
+  }
+
+
+  const {
+    data,
+    error,
+  } =
     await supabase
-      .from('grading_settings')
+      .from(
+        'grading_settings',
+      )
       .upsert(
-        {
-          school:
-            teacher.school,
-
-          class_name:
-            className,
-
-          subject,
-
-          min_grades:
-            minimum,
-
-          created_by:
-            teacher.id,
-
-          updated_at:
-            new Date()
-              .toISOString(),
-        },
+        payload,
         {
           onConflict:
             'school,class_name,subject',
@@ -443,19 +676,18 @@ export async function saveGradingSettings(
       .select('*')
       .single()
 
-  if (error) {
-    window.alert(
-      `Не удалось сохранить настройки.\n\n${error.message}`,
-    )
 
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось сохранить настройки.',
     )
   }
 
+
   return {
-    id: data.id,
+    id:
+      data.id,
 
     minGrades:
       Number(
@@ -463,6 +695,11 @@ export async function saveGradingSettings(
       ),
   }
 }
+
+
+/* ========================================
+   CONFIRM QUARTER GRADE
+======================================== */
 
 export async function confirmQuarterGrade({
   teacher,
@@ -478,17 +715,20 @@ export async function confirmQuarterGrade({
       quarter,
     )
 
+
   if (!result.isAttested) {
     throw new Error(
       `Недостаточно оценок. Не хватает: ${result.gradesMissing}`,
     )
   }
 
+
   const grade =
     Number(
       finalGrade ??
         result.suggestedGrade,
     )
+
 
   if (
     grade < 2 ||
@@ -499,45 +739,63 @@ export async function confirmQuarterGrade({
     )
   }
 
-  const { data, error } =
+
+  const payload = {
+    school:
+      student.school ||
+      teacher.school ||
+      null,
+
+    school_id:
+      student.schoolId ||
+      teacher.schoolId ||
+      null,
+
+    class_name:
+      student.className,
+
+    subject,
+
+    student_id:
+      student.id,
+
+    quarter:
+      Number(
+        quarter,
+      ),
+
+    weighted_average:
+      result.weightedAverage,
+
+    suggested_grade:
+      result.suggestedGrade,
+
+    final_grade:
+      grade,
+
+    teacher_id:
+      teacher.id,
+
+    confirmed_at:
+      new Date()
+        .toISOString(),
+
+    updated_at:
+      new Date()
+        .toISOString(),
+  }
+
+
+  const {
+    data,
+    error,
+  } =
     await supabase
-      .from('quarter_grades')
+      .from(
+        'quarter_grades',
+      )
       .upsert(
-        {
-          school:
-            student.school,
-
-          class_name:
-            student.className,
-
-          subject,
-
-          student_id:
-            student.id,
-
-          quarter:
-            Number(quarter),
-
-          weighted_average:
-            result.weightedAverage,
-
-          suggested_grade:
-            result.suggestedGrade,
-
-          final_grade:
-            grade,
-
-          teacher_id:
-            teacher.id,
-
-          confirmed_at:
-            new Date()
-              .toISOString(),
-
-          updated_at:
-            new Date()
-              .toISOString(),
-        },
+        payload,
         {
           onConflict:
             'student_id,subject,quarter',
@@ -546,21 +804,24 @@ export async function confirmQuarterGrade({
       .select('*')
       .single()
 
-  if (error) {
-    window.alert(
-      `Не удалось выставить четвертную оценку.\n\n${error.message}`,
-    )
 
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось выставить четвертную оценку.',
     )
   }
 
+
   return normalizeQuarterGrade(
     data,
   )
 }
+
+
+/* ========================================
+   FINAL QUARTER GRADES
+======================================== */
 
 export async function getStudentFinalQuarterGrades(
   studentId,
@@ -569,17 +830,27 @@ export async function getStudentFinalQuarterGrades(
     return []
   }
 
-  const { data, error } =
+
+  const {
+    data,
+    error,
+  } =
     await supabase
-      .from('quarter_grades')
+      .from(
+        'quarter_grades',
+      )
       .select('*')
       .eq(
         'student_id',
         studentId,
       )
-      .order('quarter', {
-        ascending: true,
-      })
+      .order(
+        'quarter',
+        {
+          ascending: true,
+        },
+      )
+
 
   if (error) {
     throw new Error(
@@ -588,27 +859,36 @@ export async function getStudentFinalQuarterGrades(
     )
   }
 
-  return (data || []).map(
+
+  return (
+    data ||
+    []
+  ).map(
     normalizeQuarterGrade,
   )
 }
+
+
+/* ========================================
+   SCHOOL CLASSES FOR TEACHER
+======================================== */
 
 export async function getSupabaseSchoolClassesForTeacher(
   teacher,
 ) {
   if (
-    !teacher?.school
+    !teacher?.school &&
+    !teacher?.schoolId
   ) {
     return []
   }
 
-  const { data, error } =
-    await supabase
+
+  let query =
+    supabase
       .from('profiles')
-      .select('class_name')
-      .eq(
-        'school',
-        teacher.school,
+      .select(
+        'class_name',
       )
       .eq(
         'role',
@@ -619,6 +899,31 @@ export async function getSupabaseSchoolClassesForTeacher(
         'is',
         null,
       )
+
+
+  if (
+    teacher.schoolId
+  ) {
+    query =
+      query.eq(
+        'school_id',
+        teacher.schoolId,
+      )
+  } else {
+    query =
+      query.eq(
+        'school',
+        teacher.school,
+      )
+  }
+
+
+  const {
+    data,
+    error,
+  } =
+    await query
+
 
   if (error) {
     console.error(
@@ -632,39 +937,58 @@ export async function getSupabaseSchoolClassesForTeacher(
     )
   }
 
+
   return [
     ...new Set(
-      (data || [])
+      (
+        data ||
+        []
+      )
         .map(
           (profile) =>
             profile.class_name,
         )
-        .filter(Boolean),
+        .filter(
+          Boolean,
+        ),
     ),
-  ].sort((a, b) =>
-    a.localeCompare(
-      b,
-      'ru',
-      {
-        numeric: true,
-      },
-    ),
+  ].sort(
+    (
+      first,
+      second,
+    ) =>
+      first.localeCompare(
+        second,
+        'ru',
+        {
+          numeric: true,
+        },
+      ),
   )
 }
+
+
+/* ========================================
+   STUDENTS BY CLASS
+======================================== */
 
 export async function getSupabaseStudentsByClass(
   teacher,
   className,
 ) {
   if (
-    !teacher?.school ||
+    (
+      !teacher?.school &&
+      !teacher?.schoolId
+    ) ||
     !className
   ) {
     return []
   }
 
-  const { data, error } =
-    await supabase
+
+  let query =
+    supabase
       .from('profiles')
       .select(
         `
@@ -672,12 +996,9 @@ export async function getSupabaseStudentsByClass(
           name,
           role,
           school,
+          school_id,
           class_name
         `,
-      )
-      .eq(
-        'school',
-        teacher.school,
       )
       .eq(
         'class_name',
@@ -687,9 +1008,37 @@ export async function getSupabaseStudentsByClass(
         'role',
         'Ученик',
       )
-      .order('name', {
-        ascending: true,
-      })
+      .order(
+        'name',
+        {
+          ascending: true,
+        },
+      )
+
+
+  if (
+    teacher.schoolId
+  ) {
+    query =
+      query.eq(
+        'school_id',
+        teacher.schoolId,
+      )
+  } else {
+    query =
+      query.eq(
+        'school',
+        teacher.school,
+      )
+  }
+
+
+  const {
+    data,
+    error,
+  } =
+    await query
+
 
   if (error) {
     console.error(
@@ -703,7 +1052,11 @@ export async function getSupabaseStudentsByClass(
     )
   }
 
-  return (data || []).map(
+
+  return (
+    data ||
+    []
+  ).map(
     (student) => ({
       id:
         student.id,
@@ -718,12 +1071,20 @@ export async function getSupabaseStudentsByClass(
       school:
         student.school,
 
+      schoolId:
+        student.school_id,
+
       className:
         student.class_name ||
         '',
     }),
   )
 }
+
+
+/* ========================================
+   FORECAST
+======================================== */
 
 export function buildGradeForecast(
   grades,
@@ -732,7 +1093,10 @@ export function buildGradeForecast(
   nextWorkType = 'control',
 ) {
   const subjectGrades =
-    (grades || []).filter(
+    (
+      grades ||
+      []
+    ).filter(
       (grade) =>
         grade.subject ===
           subject &&
@@ -744,10 +1108,12 @@ export function buildGradeForecast(
           ),
     )
 
+
   const nextWeight =
     getGradeTypeWeight(
       nextWorkType,
     )
+
 
   return [
     2,
@@ -769,6 +1135,7 @@ export function buildGradeForecast(
           },
         ])
 
+
       return {
         grade:
           nextGrade,
@@ -785,23 +1152,35 @@ export function buildGradeForecast(
   )
 }
 
+
+/* ========================================
+   TARGET INFO
+======================================== */
+
 export function getQuarterTargetInfo(
   weightedAverage,
 ) {
   if (
-    weightedAverage === null ||
-    weightedAverage === undefined
+    weightedAverage ===
+      null ||
+    weightedAverage ===
+      undefined
   ) {
     return {
-      toFour: null,
-      toFive: null,
+      toFour:
+        null,
+
+      toFive:
+        null,
     }
   }
+
 
   const average =
     Number(
       weightedAverage,
     )
+
 
   return {
     toFour:
@@ -811,7 +1190,9 @@ export function getQuarterTargetInfo(
             (
               3.5 -
               average
-            ).toFixed(2),
+            ).toFixed(
+              2,
+            ),
           ),
 
     toFive:
@@ -821,23 +1202,37 @@ export function getQuarterTargetInfo(
             (
               4.5 -
               average
-            ).toFixed(2),
+            ).toFixed(
+              2,
+            ),
           ),
   }
 }
+
+
+/* ========================================
+   WEIGHTED AVERAGE
+======================================== */
 
 export function calculateWeightedAverage(
   grades,
 ) {
   if (
-    !Array.isArray(grades) ||
+    !Array.isArray(
+      grades,
+    ) ||
     grades.length === 0
   ) {
     return null
   }
 
-  let weightedSum = 0
-  let totalWeight = 0
+
+  let weightedSum =
+    0
+
+  let totalWeight =
+    0
+
 
   grades.forEach(
     (grade) => {
@@ -848,6 +1243,7 @@ export function calculateWeightedAverage(
             0,
         )
 
+
       const weight =
         Number(
           grade.weight ??
@@ -856,12 +1252,14 @@ export function calculateWeightedAverage(
             ),
         )
 
+
       if (
         value > 0 &&
         weight > 0
       ) {
         weightedSum +=
-          value * weight
+          value *
+          weight
 
         totalWeight +=
           weight
@@ -869,47 +1267,75 @@ export function calculateWeightedAverage(
     },
   )
 
+
   if (
     totalWeight === 0
   ) {
     return null
   }
 
+
   return Number(
     (
       weightedSum /
       totalWeight
-    ).toFixed(2),
+    ).toFixed(
+      2,
+    ),
   )
 }
+
+
+/* ========================================
+   SUGGESTED QUARTER GRADE
+======================================== */
 
 export function getSuggestedQuarterGrade(
   average,
 ) {
   if (
     average === null ||
-    average === undefined
+    average ===
+      undefined
   ) {
     return null
   }
 
-  const value =
-    Number(average)
 
-  if (value >= 4.5) {
+  const value =
+    Number(
+      average,
+    )
+
+
+  if (
+    value >= 4.5
+  ) {
     return 5
   }
 
-  if (value >= 3.5) {
+
+  if (
+    value >= 3.5
+  ) {
     return 4
   }
 
-  if (value >= 2.5) {
+
+  if (
+    value >= 2.5
+  ) {
     return 3
   }
 
+
   return 2
 }
+
+
+/* ========================================
+   GRADE TYPE
+======================================== */
 
 export function getGradeTypeWeight(
   workType,
@@ -921,11 +1347,13 @@ export function getGradeTypeWeight(
         workType,
     )
 
+
   return (
     item?.weight ??
     0.3
   )
 }
+
 
 export function getGradeTypeLabel(
   workType,
@@ -937,19 +1365,29 @@ export function getGradeTypeLabel(
         workType,
     )
 
+
   return (
     item?.label ||
     'Оценка'
   )
 }
 
+
+/* ========================================
+   HELPERS
+======================================== */
+
 function normalizeWorkType(
   value,
 ) {
   const normalized =
-    String(value || '')
+    String(
+      value ||
+        '',
+    )
       .trim()
       .toLowerCase()
+
 
   const mapping = {
     'контрольная работа':
@@ -992,6 +1430,7 @@ function normalizeWorkType(
       'homework',
   }
 
+
   if (
     GRADE_TYPES.some(
       (type) =>
@@ -1002,11 +1441,41 @@ function normalizeWorkType(
     return normalized
   }
 
+
   return (
-    mapping[normalized] ||
+    mapping[
+      normalized
+    ] ||
     'homework'
   )
 }
+
+
+function getToday() {
+  const now =
+    new Date()
+
+
+  const local =
+    new Date(
+      now.getTime() -
+        now.getTimezoneOffset() *
+          60000,
+    )
+
+
+  return local
+    .toISOString()
+    .slice(
+      0,
+      10,
+    )
+}
+
+
+/* ========================================
+   NORMALIZE GRADE
+======================================== */
 
 function normalizeGrade(
   grade,
@@ -1017,6 +1486,9 @@ function normalizeGrade(
 
     school:
       grade.school,
+
+    schoolId:
+      grade.school_id,
 
     className:
       grade.class_name,
@@ -1073,10 +1545,21 @@ function normalizeGrade(
     date:
       grade.grade_date,
 
+    journalLessonId:
+      grade.journal_lesson_id,
+
     createdAt:
       grade.created_at,
+
+    updatedAt:
+      grade.updated_at,
   }
 }
+
+
+/* ========================================
+   NORMALIZE QUARTER GRADE
+======================================== */
 
 function normalizeQuarterGrade(
   item,
@@ -1087,6 +1570,9 @@ function normalizeQuarterGrade(
 
     school:
       item.school,
+
+    schoolId:
+      item.school_id,
 
     className:
       item.class_name,
@@ -1133,6 +1619,11 @@ function normalizeQuarterGrade(
       item.confirmed_at,
   }
 }
+
+
+/* ========================================
+   EMPTY QUARTER RESULT
+======================================== */
 
 function emptyQuarterResult() {
   return {

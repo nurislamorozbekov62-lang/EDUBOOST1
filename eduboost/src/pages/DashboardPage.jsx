@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+
 import {
   Award,
   BookOpen,
@@ -26,7 +27,8 @@ import {
   getUnlockedAchievements,
 } from '../data/achievements'
 
-import TeacherDashboardModern from '../components/TeacherDashboardModern'
+import TeacherDashboardModern
+  from '../components/TeacherDashboardModern'
 
 import {
   getStudentSubmission,
@@ -53,130 +55,84 @@ function DashboardPage() {
       return null
     }
 
-    /*
-      Учителю не нужны:
-      XP
-      уровни
-      достижения
-      streak
-
-      Поэтому для учителя сразу создаём
-      рабочий dashboard.
-    */
     if (user.role === 'Учитель') {
       return createTeacherDashboard(user)
     }
 
-    /*
-      Геймификация остаётся
-      для ученика.
-    */
-    const points = Number(
-      user.points ?? 0,
-    )
-
-    const xp = Number(
-      user.xp ?? 0,
-    )
-
-    const streak = Number(
-      user.streak ?? 0,
-    )
-
-    const level =
-      getLevelByXp(xp)
-
-    const nextLevel =
-      getNextLevel(xp)
-
-    const levelProgress =
-      getLevelProgress(xp)
-
-    const achievementsCount =
-      getUnlockedAchievements(
-        user,
-      ).length
-
-    return createStudentDashboard({
-      user,
-      points,
-      xp,
-      streak,
-      level,
-      nextLevel,
-      levelProgress,
-      achievementsCount,
-    })
+    return createStudentDashboard(user)
   }, [user])
 
   if (!user || !dashboard) {
     return null
   }
 
-  const isTeacher =
-    user.role === 'Учитель'
+  /*
+    УЧИТЕЛЬ
 
+    Отдельный интерфейс.
+    Никаких XP, уровней,
+    streak и ученического welcome.
+  */
+  if (user.role === 'Учитель') {
+    return (
+      <div className="dashboard-page">
+        <TeacherDashboardModern
+          dashboard={dashboard}
+        />
+      </div>
+    )
+  }
+
+  /*
+    УЧЕНИК
+
+    Старую геймификацию
+    сохраняем.
+  */
   return (
     <div className="dashboard-page">
-      <DashboardWelcome
+      <StudentWelcome
         user={user}
         dashboard={dashboard}
       />
 
-      {!isTeacher && (
-        <>
-          <DashboardStatistics
-            statistics={
-              dashboard.statistics
-            }
-          />
+      <StudentStatistics
+        statistics={dashboard.statistics}
+      />
 
-          <DashboardQuickActions
-            actions={
-              dashboard.quickActions
-            }
-          />
-        </>
-      )}
+      <StudentQuickActions
+        actions={dashboard.quickActions}
+      />
 
-      {isTeacher ? (
-        <TeacherDashboardModern
-          dashboard={dashboard}
-        />
-      ) : (
-        <StudentDashboard
-          dashboard={dashboard}
-        />
-      )}
+      <StudentTasks
+        dashboard={dashboard}
+      />
 
-      <DashboardNotifications />
+      <StudentProgress
+        dashboard={dashboard}
+      />
+
+      <StudentNotifications />
     </div>
   )
 }
 
-/* =========================
-   TEACHER DASHBOARD DATA
-========================= */
+/* ========================================
+   TEACHER DATA
+======================================== */
 
-function createTeacherDashboard(
-  user,
-) {
+function createTeacherDashboard(user) {
   const submissions =
-    getTeacherSubmissions(
-      user,
-    ) || []
+    getTeacherSubmissions(user) || []
 
   const pendingSubmissions =
     submissions.filter(
       (submission) =>
-        submission.status ===
-        'pending',
+        submission.status === 'pending',
     )
 
   const teacherLessons =
-    getTeacherLessons(
-      user.id,
-    ) || []
+    getTeacherLessons(user.id) || []
 
   const todayName =
     getTodayName()
@@ -185,45 +141,37 @@ function createTeacherDashboard(
     teacherLessons
       .filter(
         (lesson) =>
-          lesson.day ===
-          todayName,
+          lesson.day === todayName,
       )
-      .sort(
-        (
-          firstLesson,
-          secondLesson,
-        ) => {
-          const firstNumber =
-            Number(
-              firstLesson.lessonNumber,
-            ) || 999
+      .sort((first, second) => {
+        const firstNumber =
+          Number(
+            first.lessonNumber,
+          ) || 999
 
-          const secondNumber =
-            Number(
-              secondLesson.lessonNumber,
-            ) || 999
+        const secondNumber =
+          Number(
+            second.lessonNumber,
+          ) || 999
 
-          if (
-            firstNumber !==
+        if (
+          firstNumber !==
+          secondNumber
+        ) {
+          return (
+            firstNumber -
             secondNumber
-          ) {
-            return (
-              firstNumber -
-              secondNumber
-            )
-          }
-
-          return String(
-            firstLesson.startTime ||
-              '',
-          ).localeCompare(
-            String(
-              secondLesson.startTime ||
-                '',
-            ),
           )
-        },
-      )
+        }
+
+        return String(
+          first.startTime || '',
+        ).localeCompare(
+          String(
+            second.startTime || '',
+          ),
+        )
+      })
 
   return {
     pendingSubmissions,
@@ -231,20 +179,34 @@ function createTeacherDashboard(
   }
 }
 
-/* =========================
-   STUDENT DASHBOARD DATA
-========================= */
+/* ========================================
+   STUDENT DATA
+======================================== */
 
-function createStudentDashboard({
-  user,
-  points,
-  xp,
-  streak,
-  level,
-  nextLevel,
-  levelProgress,
-  achievementsCount,
-}) {
+function createStudentDashboard(user) {
+  const points =
+    Number(user.points ?? 0)
+
+  const xp =
+    Number(user.xp ?? 0)
+
+  const streak =
+    Number(user.streak ?? 0)
+
+  const level =
+    getLevelByXp(xp)
+
+  const nextLevel =
+    getNextLevel(xp)
+
+  const levelProgress =
+    getLevelProgress(xp)
+
+  const achievementsCount =
+    getUnlockedAchievements(
+      user,
+    ).length
+
   const tasks =
     getTasksForStudent(
       user,
@@ -261,17 +223,12 @@ function createStudentDashboard({
         ),
     }))
 
-  const notStartedTasks =
+  const activeTasks =
     taskItems.filter(
       ({ submission }) =>
-        !submission,
-    )
-
-  const rejectedTasks =
-    taskItems.filter(
-      ({ submission }) =>
-        submission?.status ===
-        'rejected',
+        !submission ||
+        submission.status ===
+          'rejected',
     )
 
   const pendingTasks =
@@ -288,27 +245,19 @@ function createStudentDashboard({
         'approved',
     )
 
-  const activeTasks = [
-    ...notStartedTasks,
-    ...rejectedTasks,
-  ]
-
-  const upcomingTasks = [
-    ...activeTasks,
-  ]
-    .sort(
-      (
-        firstItem,
-        secondItem,
-      ) =>
-        getDeadlineTime(
-          firstItem.task.deadline,
-        ) -
-        getDeadlineTime(
-          secondItem.task.deadline,
-        ),
-    )
-    .slice(0, 3)
+  const upcomingTasks =
+    activeTasks
+      .slice()
+      .sort(
+        (first, second) =>
+          getDeadlineTime(
+            first.task.deadline,
+          ) -
+          getDeadlineTime(
+            second.task.deadline,
+          ),
+      )
+      .slice(0, 3)
 
   const todayName =
     getTodayName()
@@ -362,58 +311,39 @@ function createStudentDashboard({
     statistics: [
       {
         id: 'points',
-
         title:
           points.toLocaleString(
             'ru-RU',
           ),
-
         subtitle: 'Баллов',
-
         icon: Coins,
-
         colorClass:
           'dashboard-stat-icon--orange',
       },
 
       {
         id: 'level',
-
         title: level.id,
-
         subtitle: 'Уровень',
-
         icon: Trophy,
-
         colorClass:
           'dashboard-stat-icon--blue',
       },
 
       {
         id: 'streak',
-
         title: streak,
-
-        subtitle:
-          'Дней подряд',
-
+        subtitle: 'Дней подряд',
         icon: Flame,
-
         colorClass:
           'dashboard-stat-icon--green',
       },
 
       {
         id: 'achievements',
-
-        title:
-          achievementsCount,
-
-        subtitle:
-          'Достижений',
-
+        title: achievementsCount,
+        subtitle: 'Достижений',
         icon: Award,
-
         colorClass:
           'dashboard-stat-icon--purple',
       },
@@ -422,131 +352,57 @@ function createStudentDashboard({
     quickActions: [
       {
         id: 'tasks',
-
-        title:
-          'Мои задания',
-
+        title: 'Мои задания',
         subtitle:
-          activeTasks.length ===
-          0
+          activeTasks.length === 0
             ? 'Активных заданий нет'
-            : `${activeTasks.length} ${getWord(
-                activeTasks.length,
-                [
-                  'активное задание',
-                  'активных задания',
-                  'активных заданий',
-                ],
-              )}`,
-
+            : `${activeTasks.length} активных`,
         path: '/tasks',
-
         icon: ClipboardList,
       },
 
       {
         id: 'schedule',
-
-        title:
-          'Расписание',
-
+        title: 'Расписание',
         subtitle:
-          todayLessons.length ===
-          0
-            ? 'Уроков сегодня нет'
-            : `${todayLessons.length} ${getWord(
-                todayLessons.length,
-                [
-                  'урок сегодня',
-                  'урока сегодня',
-                  'уроков сегодня',
-                ],
-              )}`,
-
+          todayLessons.length === 0
+            ? 'Сегодня уроков нет'
+            : `${todayLessons.length} уроков сегодня`,
         path: '/schedule',
-
         icon: CalendarDays,
       },
 
       {
         id: 'courses',
-
-        title:
-          'Учебные курсы',
-
+        title: 'Учебные курсы',
         subtitle:
           'Открыть каталог курсов',
-
         path: '/courses',
-
         icon: BookOpen,
       },
 
       {
         id: 'journal',
-
-        title:
-          'Успеваемость',
-
+        title: 'Успеваемость',
         subtitle:
           grades.length === 0
             ? 'Оценок пока нет'
             : `Средний балл ${averageGrade}`,
-
         path: '/my-journal',
-
         icon: GraduationCap,
       },
     ],
   }
 }
 
-/* =========================
-   WELCOME
-========================= */
+/* ========================================
+   STUDENT WELCOME
+======================================== */
 
-function DashboardWelcome({
+function StudentWelcome({
   user,
   dashboard,
 }) {
-  const isTeacher =
-    user.role === 'Учитель'
-
-  /*
-    Для учителя — только
-    рабочее приветствие.
-    Никаких XP и уровней.
-  */
-  if (isTeacher) {
-    return (
-      <section className="dashboard-welcome">
-        <div className="dashboard-welcome-content">
-          <p className="dashboard-welcome-label">
-            Кабинет учителя
-          </p>
-
-          <h1>
-            Привет,{' '}
-            {user.name ||
-              'Учитель'}!
-          </h1>
-
-          <p>
-            Проверяйте работы
-            учеников, ведите
-            электронный журнал и
-            управляйте учебным
-            процессом.
-          </p>
-        </div>
-      </section>
-    )
-  }
-
-  /*
-    Ученик сохраняет
-    всю геймификацию.
-  */
   return (
     <section className="dashboard-welcome">
       <div className="dashboard-welcome-content">
@@ -575,28 +431,23 @@ function DashboardWelcome({
           <div className="dashboard-level-info">
             <strong>
               Уровень «
-              {
-                dashboard.level
-                  .name
-              }
+              {dashboard.level.name}
               »
             </strong>
 
             <div className="dashboard-progress">
               <span
                 style={{
-                  width: `${dashboard.levelProgress}%`,
+                  width:
+                    `${dashboard.levelProgress}%`,
                 }}
               />
             </div>
 
             <p
               style={{
-                marginTop:
-                  '7px',
-
-                fontSize:
-                  '12px',
+                marginTop: '7px',
+                fontSize: '12px',
               }}
             >
               {dashboard.xp.toLocaleString(
@@ -617,61 +468,50 @@ function DashboardWelcome({
   )
 }
 
-/* =========================
-   STUDENT STATISTICS
-========================= */
+/* ========================================
+   STUDENT STATS
+======================================== */
 
-function DashboardStatistics({
+function StudentStatistics({
   statistics,
 }) {
   return (
     <section className="dashboard-stats">
-      {statistics.map(
-        (item) => {
-          const Icon =
-            item.icon
+      {statistics.map((item) => {
+        const Icon = item.icon
 
-          return (
-            <article
-              key={
-                item.id
-              }
-              className="dashboard-stat-card"
+        return (
+          <article
+            key={item.id}
+            className="dashboard-stat-card"
+          >
+            <div
+              className={`dashboard-stat-icon ${item.colorClass}`}
             >
-              <div
-                className={`dashboard-stat-icon ${item.colorClass}`}
-              >
-                <Icon
-                  size={22}
-                />
-              </div>
+              <Icon size={22} />
+            </div>
 
-              <div className="dashboard-stat-content">
-                <strong>
-                  {
-                    item.title
-                  }
-                </strong>
+            <div className="dashboard-stat-content">
+              <strong>
+                {item.title}
+              </strong>
 
-                <span>
-                  {
-                    item.subtitle
-                  }
-                </span>
-              </div>
-            </article>
-          )
-        },
-      )}
+              <span>
+                {item.subtitle}
+              </span>
+            </div>
+          </article>
+        )
+      })}
     </section>
   )
 }
 
-/* =========================
-   STUDENT QUICK ACTIONS
-========================= */
+/* ========================================
+   STUDENT QUICK ACCESS
+======================================== */
 
-function DashboardQuickActions({
+function StudentQuickActions({
   actions,
 }) {
   return (
@@ -687,282 +527,225 @@ function DashboardQuickActions({
       </div>
 
       <div className="dashboard-quick-grid">
-        {actions.map(
-          (action) => {
-            const Icon =
-              action.icon
+        {actions.map((action) => {
+          const Icon =
+            action.icon
 
-            return (
-              <Link
-                key={
-                  action.id
-                }
-                to={
-                  action.path
-                }
-                className="dashboard-quick-card"
+          return (
+            <Link
+              key={action.id}
+              to={action.path}
+              className="dashboard-quick-card"
+            >
+              <div className="dashboard-quick-icon">
+                <Icon size={22} />
+              </div>
+
+              <div
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                }}
               >
-                <div className="dashboard-quick-icon">
-                  <Icon
-                    size={22}
-                  />
-                </div>
+                <strong>
+                  {action.title}
+                </strong>
 
-                <div
-                  style={{
-                    minWidth:
-                      0,
+                <span>
+                  {action.subtitle}
+                </span>
+              </div>
 
-                    flex: 1,
-                  }}
-                >
-                  <strong>
-                    {
-                      action.title
-                    }
-                  </strong>
-
-                  <span>
-                    {
-                      action.subtitle
-                    }
-                  </span>
-                </div>
-
-                <ChevronRight
-                  size={18}
-                  color="#94a3b8"
-                />
-              </Link>
-            )
-          },
-        )}
+              <ChevronRight
+                size={18}
+                color="#94a3b8"
+              />
+            </Link>
+          )
+        })}
       </div>
     </section>
   )
 }
 
-/* =========================
-   STUDENT CONTENT
-========================= */
+/* ========================================
+   STUDENT TASKS
+======================================== */
 
-function StudentDashboard({
+function StudentTasks({
   dashboard,
 }) {
   return (
-    <>
-      <section>
-        <div className="dashboard-section-header">
-          <h2>
-            Ближайшие задания
-          </h2>
+    <section>
+      <div className="dashboard-section-header">
+        <h2>
+          Ближайшие задания
+        </h2>
 
-          <Link to="/tasks">
-            Смотреть все
-          </Link>
-        </div>
+        <Link to="/tasks">
+          Смотреть все
+        </Link>
+      </div>
 
-        {dashboard
-          .upcomingTasks
-          .length === 0 ? (
-          <DashboardEmpty
-            icon={
-              ClipboardList
-            }
-            title="Активных заданий нет"
-            text="Когда учитель создаст задание для вашей школы и класса, оно появится здесь."
-          />
-        ) : (
-          <div className="dashboard-task-list">
-            {dashboard.upcomingTasks.map(
-              ({
-                task,
-                submission,
-              }) => (
-                <Link
-                  key={
-                    task.id
-                  }
-                  to="/tasks"
-                  className="dashboard-task-item"
-                >
-                  <div className="dashboard-task-marker">
-                    <ClipboardList
-                      size={
-                        21
-                      }
-                    />
-                  </div>
-
-                  <div className="dashboard-task-content">
-                    <strong>
-                      {task.subject ||
-                        'Задание'}
-                    </strong>
-
-                    <span>
-                      {
-                        task.title
-                      }
-                    </span>
-
-                    <span
-                      style={{
-                        marginTop:
-                          '5px',
-
-                        fontSize:
-                          '11px',
-                      }}
-                    >
-                      {formatDeadline(
-                        task.deadline,
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="dashboard-task-status">
-                    {getSubmissionStatus(
-                      submission,
-                    )}
-                  </div>
-                </Link>
-              ),
-            )}
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="dashboard-section-header">
-          <h2>
-            Твой прогресс
-          </h2>
-        </div>
-
-        <div className="content-card">
-          <div
-            style={{
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              gap: '14px',
-            }}
-          >
-            <div className="dashboard-quick-icon">
-              <CheckCircle2
-                size={23}
-              />
-            </div>
-
-            <div
-              style={{
-                flex: 1,
-              }}
-            >
-              <strong>
-                {dashboard.completedTasksCount >
-                0
-                  ? 'Реальные результаты'
-                  : 'Результатов пока нет'}
-              </strong>
-
-              <p
-                style={{
-                  margin:
-                    '5px 0 0',
-
-                  color:
-                    '#718096',
-
-                  fontSize:
-                    '13px',
-
-                  lineHeight:
-                    1.5,
-                }}
+      {dashboard.upcomingTasks
+        .length === 0 ? (
+        <DashboardEmpty
+          icon={ClipboardList}
+          title="Активных заданий нет"
+          text="Новые задания учителя появятся здесь."
+        />
+      ) : (
+        <div className="dashboard-task-list">
+          {dashboard.upcomingTasks.map(
+            ({
+              task,
+              submission,
+            }) => (
+              <Link
+                key={task.id}
+                to="/tasks"
+                className="dashboard-task-item"
               >
-                Принято
-                учителем:{' '}
-                {
-                  dashboard.completedTasksCount
-                }
-                . На
-                проверке:{' '}
-                {
-                  dashboard.pendingTasksCount
-                }
-                . Баллов на
-                аккаунте:{' '}
-                {
-                  dashboard.points
-                }
-                .
-              </p>
-            </div>
-          </div>
+                <div className="dashboard-task-marker">
+                  <ClipboardList
+                    size={21}
+                  />
+                </div>
+
+                <div className="dashboard-task-content">
+                  <strong>
+                    {task.subject ||
+                      'Задание'}
+                  </strong>
+
+                  <span>
+                    {task.title}
+                  </span>
+
+                  <span
+                    style={{
+                      marginTop: '5px',
+                      fontSize: '11px',
+                    }}
+                  >
+                    {formatDeadline(
+                      task.deadline,
+                    )}
+                  </span>
+                </div>
+
+                <div className="dashboard-task-status">
+                  {getSubmissionStatus(
+                    submission,
+                  )}
+                </div>
+              </Link>
+            ),
+          )}
         </div>
-      </section>
-    </>
+      )}
+    </section>
   )
 }
 
-/* =========================
-   NOTIFICATIONS
-========================= */
+/* ========================================
+   STUDENT PROGRESS
+======================================== */
 
-function DashboardNotifications() {
+function StudentProgress({
+  dashboard,
+}) {
+  return (
+    <section>
+      <div className="dashboard-section-header">
+        <h2>
+          Твой прогресс
+        </h2>
+      </div>
+
+      <div className="content-card">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+          }}
+        >
+          <div className="dashboard-quick-icon">
+            <CheckCircle2 size={23} />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <strong>
+              {dashboard
+                .completedTasksCount >
+              0
+                ? 'Реальные результаты'
+                : 'Результатов пока нет'}
+            </strong>
+
+            <p
+              style={{
+                margin: '5px 0 0',
+                color: '#718096',
+                fontSize: '13px',
+                lineHeight: 1.5,
+              }}
+            >
+              Принято учителем:{' '}
+              {
+                dashboard
+                  .completedTasksCount
+              }
+              . На проверке:{' '}
+              {
+                dashboard
+                  .pendingTasksCount
+              }
+              . Баллов:{' '}
+              {dashboard.points}.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ========================================
+   NOTIFICATIONS
+======================================== */
+
+function StudentNotifications() {
   return (
     <Link
       to="/notifications"
       className="content-card"
       style={{
         display: 'flex',
-
-        alignItems:
-          'center',
-
+        alignItems: 'center',
         gap: '14px',
-
-        textDecoration:
-          'none',
+        textDecoration: 'none',
       }}
     >
       <div className="dashboard-quick-icon">
-        <MessageCircle
-          size={23}
-        />
+        <MessageCircle size={23} />
       </div>
 
-      <div
-        style={{
-          flex: 1,
-        }}
-      >
+      <div style={{ flex: 1 }}>
         <strong>
           Уведомления
         </strong>
 
         <p
           style={{
-            margin:
-              '5px 0 0',
-
-            color:
-              '#718096',
-
-            fontSize:
-              '13px',
-
-            lineHeight:
-              1.5,
+            margin: '5px 0 0',
+            color: '#718096',
+            fontSize: '13px',
+            lineHeight: 1.5,
           }}
         >
-          Здесь отображаются
-          новые задания, отчёты
+          Новые задания, отчёты
           и другие события.
         </p>
       </div>
@@ -975,9 +758,9 @@ function DashboardNotifications() {
   )
 }
 
-/* =========================
-   EMPTY STATE
-========================= */
+/* ========================================
+   EMPTY
+======================================== */
 
 function DashboardEmpty({
   icon: Icon,
@@ -989,37 +772,23 @@ function DashboardEmpty({
       <div
         style={{
           display: 'flex',
-
-          alignItems:
-            'center',
-
+          alignItems: 'center',
           gap: '14px',
         }}
       >
         <div className="dashboard-quick-icon">
-          <Icon
-            size={23}
-          />
+          <Icon size={23} />
         </div>
 
         <div>
-          <strong>
-            {title}
-          </strong>
+          <strong>{title}</strong>
 
           <p
             style={{
-              margin:
-                '5px 0 0',
-
-              color:
-                '#718096',
-
-              fontSize:
-                '13px',
-
-              lineHeight:
-                1.5,
+              margin: '5px 0 0',
+              color: '#718096',
+              fontSize: '13px',
+              lineHeight: 1.5,
             }}
           >
             {text}
@@ -1030,9 +799,9 @@ function DashboardEmpty({
   )
 }
 
-/* =========================
+/* ========================================
    HELPERS
-========================= */
+======================================== */
 
 function getSubmissionStatus(
   submission,
@@ -1069,9 +838,7 @@ function getDeadlineTime(
     `${deadline}T23:59:59`,
   ).getTime()
 
-  return Number.isNaN(
-    time,
-  )
+  return Number.isNaN(time)
     ? Number.MAX_SAFE_INTEGER
     : time
 }
@@ -1098,39 +865,6 @@ function formatDeadline(
   return `До ${date.toLocaleDateString(
     'ru-RU',
   )}`
-}
-
-function getWord(
-  number,
-  words,
-) {
-  const value =
-    Math.abs(number) % 100
-
-  const lastDigit =
-    value % 10
-
-  if (
-    value > 10 &&
-    value < 20
-  ) {
-    return words[2]
-  }
-
-  if (
-    lastDigit > 1 &&
-    lastDigit < 5
-  ) {
-    return words[1]
-  }
-
-  if (
-    lastDigit === 1
-  ) {
-    return words[0]
-  }
-
-  return words[2]
 }
 
 export default DashboardPage

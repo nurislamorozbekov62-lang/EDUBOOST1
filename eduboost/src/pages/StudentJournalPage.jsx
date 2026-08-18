@@ -8,24 +8,26 @@ import {
   BookOpen,
   CalendarCheck2,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   FileText,
   GraduationCap,
   RefreshCcw,
   School,
   Sparkles,
-  UserRound,
-  XCircle,
   TrendingUp,
+  UserRound,
+  X,
+  XCircle,
 } from 'lucide-react'
-
-import {
-  useAutoRefresh,
-} from '../hooks/useAutoRefresh'
 
 import {
   useAuth,
 } from '../context/AuthContext'
+
+import {
+  useAutoRefresh,
+} from '../hooks/useAutoRefresh'
 
 import {
   getLinkedStudents,
@@ -44,27 +46,48 @@ import {
 
 import {
   calculateSupabaseAttendanceStats,
+  getAttendanceStatusLabel,
   getSupabaseStudentAttendance,
 } from '../services/supabaseAttendanceService'
 
+import {
+  getSupabaseTasksForStudent,
+} from '../services/supabaseTaskService'
+
+import {
+  supabase,
+} from '../lib/supabase'
+
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 function StudentJournalPage() {
-  const { user } = useAuth()
+  const {
+    user,
+  } = useAuth()
+
 
   const [
     activeTab,
     setActiveTab,
-  ] = useState('grades')
+  ] = useState(
+    'grades',
+  )
+
 
   const [
     selectedQuarter,
     setSelectedQuarter,
   ] = useState(1)
 
+
   const [
     selectedStudentId,
     setSelectedStudentId,
   ] = useState('')
+
 
   const [
     grades,
@@ -87,6 +110,17 @@ function StudentJournalPage() {
   ] = useState([])
 
   const [
+    lessons,
+    setLessons,
+  ] = useState([])
+
+  const [
+    tasks,
+    setTasks,
+  ] = useState([])
+
+
+  const [
     gradesLoading,
     setGradesLoading,
   ] = useState(true)
@@ -95,6 +129,12 @@ function StudentJournalPage() {
     attendanceLoading,
     setAttendanceLoading,
   ] = useState(true)
+
+  const [
+    lessonsLoading,
+    setLessonsLoading,
+  ] = useState(true)
+
 
   const [
     gradesError,
@@ -106,29 +146,45 @@ function StudentJournalPage() {
     setAttendanceError,
   ] = useState('')
 
+  const [
+    lessonsError,
+    setLessonsError,
+  ] = useState('')
 
-  /*
-   * Родитель может видеть только
-   * привязанных к нему детей.
-   */
+
+  const [
+    selectedLesson,
+    setSelectedLesson,
+  ] = useState(null)
+
+
+  /* =======================================================
+     PARENT STUDENTS
+  ======================================================= */
+
   const linkedStudents =
     useMemo(() => {
       if (
         !user?.id ||
-        user.role !== 'Родитель'
+        user.role !==
+          'Родитель'
       ) {
         return []
       }
+
 
       try {
         return (
           getLinkedStudents(
             user.id,
-          ) || []
+          ) ||
+          []
         )
-      } catch (error) {
+      } catch (
+        error
+      ) {
         console.error(
-          'Не удалось получить привязанных детей:',
+          'Linked students:',
           error,
         )
 
@@ -140,78 +196,96 @@ function StudentJournalPage() {
     ])
 
 
-  /*
-   * Если родитель открыл дневник,
-   * автоматически выбираем первого
-   * привязанного ребёнка.
-   */
   useEffect(() => {
     if (
-      user?.role !== 'Родитель'
+      user?.role !==
+      'Родитель'
     ) {
       return
     }
+
 
     if (
-      linkedStudents.length === 0
+      linkedStudents.length ===
+      0
     ) {
       setSelectedStudentId('')
+
       return
     }
 
-    const selectedExists =
-      linkedStudents.some(
-        (student) =>
-          String(student.id) ===
-          String(
-            selectedStudentId,
-          ),
-      )
 
-    if (!selectedExists) {
-      setSelectedStudentId(
-        String(
+    setSelectedStudentId(
+      (current) => {
+        const exists =
+          linkedStudents.some(
+            (student) =>
+              String(
+                student.id,
+              ) ===
+              String(
+                current,
+              ),
+          )
+
+
+        if (
+          exists
+        ) {
+          return current
+        }
+
+
+        return String(
           linkedStudents[0].id,
-        ),
-      )
-    }
+        )
+      },
+    )
   }, [
     user?.role,
     linkedStudents,
-    selectedStudentId,
   ])
 
 
-  /*
-   * Ученик смотрит себя.
-   * Родитель смотрит выбранного
-   * привязанного ребёнка.
-   */
+  /* =======================================================
+     ACTIVE STUDENT
+  ======================================================= */
+
   const journalStudent =
     useMemo(() => {
-      if (!user) {
+      if (
+        !user
+      ) {
         return null
       }
 
+
       if (
-        user.role === 'Ученик'
+        user.role ===
+        'Ученик'
       ) {
         return user
       }
 
+
       if (
-        user.role === 'Родитель'
+        user.role ===
+        'Родитель'
       ) {
         return (
           linkedStudents.find(
             (student) =>
-              String(student.id) ===
+              String(
+                student.id,
+              ) ===
               String(
                 selectedStudentId,
               ),
-          ) || null
+          ) ||
+          null
         )
       }
+
 
       return null
     }, [
@@ -222,39 +296,50 @@ function StudentJournalPage() {
 
 
   const journalStudentId =
-    journalStudent?.id || null
+    journalStudent?.id ||
+    null
 
 
   const isParent =
-    user?.role === 'Родитель'
+    user?.role ===
+    'Родитель'
 
 
-  /*
-   * При переключении ребёнка
-   * очищаем старые данные, чтобы
-   * они не мелькали во время загрузки.
-   */
+  /* =======================================================
+     RESET
+  ======================================================= */
+
   useEffect(() => {
     setGrades([])
     setFinalQuarterGrades([])
     setSubjectResults({})
     setAttendanceRecords([])
+    setLessons([])
+    setTasks([])
 
     setGradesError('')
     setAttendanceError('')
+    setLessonsError('')
+
+    setSelectedLesson(
+      null,
+    )
   }, [
     journalStudentId,
   ])
 
 
-  /*
-   * Загружаем оценки выбранного
-   * ученика за выбранную четверть.
-   */
+  /* =======================================================
+     LOAD
+  ======================================================= */
+
   useEffect(() => {
-    if (!journalStudentId) {
+    if (
+      !journalStudentId
+    ) {
       return
     }
+
 
     void loadGrades()
   }, [
@@ -263,14 +348,13 @@ function StudentJournalPage() {
   ])
 
 
-  /*
-   * Загружаем посещаемость
-   * выбранного ученика.
-   */
   useEffect(() => {
-    if (!journalStudentId) {
+    if (
+      !journalStudentId
+    ) {
       return
     }
+
 
     void loadAttendance()
   }, [
@@ -278,21 +362,45 @@ function StudentJournalPage() {
   ])
 
 
-  /*
-   * Автообновление при возврате
-   * на вкладку браузера.
-   */
+  useEffect(() => {
+    if (
+      !journalStudentId
+    ) {
+      return
+    }
+
+
+    void loadLessons()
+  }, [
+    journalStudentId,
+    selectedQuarter,
+  ])
+
+
   useAutoRefresh(
     async () => {
-      if (!journalStudentId) {
+      if (
+        !journalStudentId
+      ) {
         return
       }
 
+
       if (
-        activeTab === 'grades'
+        activeTab ===
+        'grades'
       ) {
         await loadGrades()
       }
+
+
+      if (
+        activeTab ===
+        'lessons'
+      ) {
+        await loadLessons()
+      }
+
 
       if (
         activeTab ===
@@ -309,43 +417,56 @@ function StudentJournalPage() {
   )
 
 
+  /* =======================================================
+     GRADES
+  ======================================================= */
+
   async function loadGrades() {
-    if (!journalStudentId) {
+    if (
+      !journalStudentId
+    ) {
       return
     }
 
+
     try {
-      setGradesLoading(true)
+      setGradesLoading(
+        true,
+      )
+
       setGradesError('')
 
-      /*
-       * Обычные оценки
-       * выбранного ученика.
-       */
+
       const gradeRows =
         await getSupabaseStudentQuarterGrades(
           journalStudentId,
           selectedQuarter,
         )
 
+
+      const safeGrades =
+        Array.isArray(
+          gradeRows,
+        )
+          ? gradeRows
+          : []
+
+
       setGrades(
-        gradeRows || [],
+        safeGrades,
       )
 
 
-      /*
-       * Подтверждённые
-       * четвертные оценки.
-       */
       try {
-        const allFinalGrades =
+        const finalRows =
           await getStudentFinalQuarterGrades(
             journalStudentId,
           )
 
+
         setFinalQuarterGrades(
           (
-            allFinalGrades ||
+            finalRows ||
             []
           ).filter(
             (item) =>
@@ -370,20 +491,16 @@ function StudentJournalPage() {
       }
 
 
-      /*
-       * Собираем список предметов.
-       */
       const subjectNames = [
         ...new Set(
-          (
-            gradeRows ||
-            []
-          )
+          safeGrades
             .map(
               (grade) =>
                 grade.subject,
             )
-            .filter(Boolean),
+            .filter(
+              Boolean,
+            ),
         ),
       ]
 
@@ -391,13 +508,11 @@ function StudentJournalPage() {
       const nextResults = {}
 
 
-      /*
-       * Для каждого предмета
-       * рассчитываем четверть.
-       */
       await Promise.all(
         subjectNames.map(
-          async (subject) => {
+          async (
+            subject,
+          ) => {
             try {
               const result =
                 await calculateQuarterResult(
@@ -405,6 +520,7 @@ function StudentJournalPage() {
                   subject,
                   selectedQuarter,
                 )
+
 
               nextResults[
                 subject
@@ -417,17 +533,8 @@ function StudentJournalPage() {
               )
 
 
-              /*
-               * Если RPC временно
-               * недоступен —
-               * используем локальный
-               * расчёт.
-               */
               const subjectGrades =
-                (
-                  gradeRows ||
-                  []
-                ).filter(
+                safeGrades.filter(
                   (grade) =>
                     grade.subject ===
                     subject,
@@ -478,10 +585,10 @@ function StudentJournalPage() {
         nextResults,
       )
     } catch (
-      loadError
+      error
     ) {
       console.error(
-        loadError,
+        error,
       )
 
       setGrades([])
@@ -489,19 +596,28 @@ function StudentJournalPage() {
       setSubjectResults({})
 
       setGradesError(
-        loadError?.message ||
+        error?.message ||
           'Не удалось загрузить оценки.',
       )
     } finally {
-      setGradesLoading(false)
+      setGradesLoading(
+        false,
+      )
     }
   }
 
 
+  /* =======================================================
+     ATTENDANCE
+  ======================================================= */
+
   async function loadAttendance() {
-    if (!journalStudentId) {
+    if (
+      !journalStudentId
+    ) {
       return
     }
+
 
     try {
       setAttendanceLoading(
@@ -518,13 +634,17 @@ function StudentJournalPage() {
 
 
       setAttendanceRecords(
-        data || [],
+        Array.isArray(
+          data,
+        )
+          ? data
+          : [],
       )
     } catch (
-      loadError
+      error
     ) {
       console.error(
-        loadError,
+        error,
       )
 
       setAttendanceRecords(
@@ -532,7 +652,7 @@ function StudentJournalPage() {
       )
 
       setAttendanceError(
-        loadError?.message ||
+        error?.message ||
           'Не удалось загрузить посещаемость.',
       )
     } finally {
@@ -542,6 +662,164 @@ function StudentJournalPage() {
     }
   }
 
+
+  /* =======================================================
+     LESSONS + HOMEWORK
+  ======================================================= */
+
+  async function loadLessons() {
+    if (
+      !journalStudent
+    ) {
+      return
+    }
+
+
+    try {
+      setLessonsLoading(
+        true,
+      )
+
+      setLessonsError('')
+
+
+      const className =
+        journalStudent.className ||
+        journalStudent.class_name ||
+        ''
+
+
+      if (
+        !className
+      ) {
+        setLessons([])
+        setTasks([])
+
+        return
+      }
+
+
+      let query =
+        supabase
+          .from(
+            'journal_lessons',
+          )
+          .select('*')
+          .eq(
+            'class_name',
+            className,
+          )
+          .eq(
+            'quarter',
+            selectedQuarter,
+          )
+
+
+      if (
+        journalStudent.schoolId
+      ) {
+        query =
+          query.eq(
+            'school_id',
+            journalStudent.schoolId,
+          )
+      } else if (
+        journalStudent.school
+      ) {
+        query =
+          query.eq(
+            'school',
+            journalStudent.school,
+          )
+      }
+
+
+      const {
+        data,
+        error,
+      } =
+        await query
+          .order(
+            'lesson_date',
+            {
+              ascending:
+                false,
+            },
+          )
+
+
+      if (
+        error
+      ) {
+        throw new Error(
+          error.message ||
+            'Не удалось загрузить уроки.',
+        )
+      }
+
+
+      const normalizedLessons =
+        (
+          data ||
+          []
+        ).map(
+          normalizeJournalLesson,
+        )
+
+
+      setLessons(
+        normalizedLessons,
+      )
+
+
+      try {
+        const taskRows =
+          await getSupabaseTasksForStudent(
+            journalStudent,
+          )
+
+
+        setTasks(
+          Array.isArray(
+            taskRows,
+          )
+            ? taskRows
+            : [],
+        )
+      } catch (
+        taskError
+      ) {
+        console.error(
+          taskError,
+        )
+
+        setTasks([])
+      }
+    } catch (
+      error
+    ) {
+      console.error(
+        error,
+      )
+
+      setLessons([])
+      setTasks([])
+
+      setLessonsError(
+        error?.message ||
+          'Не удалось загрузить уроки.',
+      )
+    } finally {
+      setLessonsLoading(
+        false,
+      )
+    }
+  }
+
+
+  /* =======================================================
+     CALCULATIONS
+  ======================================================= */
 
   const attendance =
     useMemo(
@@ -558,10 +836,12 @@ function StudentJournalPage() {
   const averageGrade =
     useMemo(() => {
       if (
-        grades.length === 0
+        grades.length ===
+        0
       ) {
         return null
       }
+
 
       const sum =
         grades.reduce(
@@ -577,11 +857,14 @@ function StudentJournalPage() {
           0,
         )
 
+
       return Number(
         (
           sum /
           grades.length
-        ).toFixed(2),
+        ).toFixed(
+          2,
+        ),
       )
     }, [
       grades,
@@ -589,33 +872,23 @@ function StudentJournalPage() {
 
 
   const excellentGrades =
-    useMemo(
-      () =>
-        grades.filter(
-          (grade) =>
-            Number(
-              grade.value,
-            ) === 5,
-        ).length,
-      [
-        grades,
-      ],
-    )
+    grades.filter(
+      (grade) =>
+        Number(
+          grade.value,
+        ) ===
+        5,
+    ).length
 
 
   const goodGrades =
-    useMemo(
-      () =>
-        grades.filter(
-          (grade) =>
-            Number(
-              grade.value,
-            ) === 4,
-        ).length,
-      [
-        grades,
-      ],
-    )
+    grades.filter(
+      (grade) =>
+        Number(
+          grade.value,
+        ) ===
+        4,
+    ).length
 
 
   const subjects =
@@ -627,7 +900,9 @@ function StudentJournalPage() {
               (grade) =>
                 grade.subject,
             )
-            .filter(Boolean),
+            .filter(
+              Boolean,
+            ),
         ),
       ]
 
@@ -712,7 +987,8 @@ function StudentJournalPage() {
                 (item) =>
                   Number(
                     item.grade,
-                  ) === 5,
+                  ) ===
+                  5,
               )
 
 
@@ -771,18 +1047,120 @@ function StudentJournalPage() {
     ])
 
 
-  if (!user) {
+  /* =======================================================
+     LESSON ITEMS
+  ======================================================= */
+
+  const lessonItems =
+    useMemo(() => {
+      return lessons.map(
+        (lesson) => {
+          const lessonGrades =
+            grades.filter(
+              (grade) => {
+                if (
+                  grade.journalLessonId
+                ) {
+                  return (
+                    String(
+                      grade.journalLessonId,
+                    ) ===
+                    String(
+                      lesson.id,
+                    )
+                  )
+                }
+
+
+                return (
+                  grade.subject ===
+                    lesson.subject &&
+                  grade.date ===
+                    lesson.date
+                )
+              },
+            )
+
+
+          const lessonAttendance =
+            attendanceRecords.find(
+              (record) => {
+                if (
+                  record.journalLessonId
+                ) {
+                  return (
+                    String(
+                      record.journalLessonId,
+                    ) ===
+                    String(
+                      lesson.id,
+                    )
+                  )
+                }
+
+
+                return (
+                  record.subject ===
+                    lesson.subject &&
+                  record.date ===
+                    lesson.date
+                )
+              },
+            ) ||
+            null
+
+
+          const lessonTasks =
+            tasks.filter(
+              (task) =>
+                String(
+                  task.journalLessonId ||
+                    '',
+                ) ===
+                String(
+                  lesson.id,
+                ),
+            )
+
+
+          return {
+            ...lesson,
+
+            grades:
+              lessonGrades,
+
+            attendance:
+              lessonAttendance,
+
+            tasks:
+              lessonTasks,
+          }
+        },
+      )
+    }, [
+      lessons,
+      grades,
+      attendanceRecords,
+      tasks,
+    ])
+
+
+  /* =======================================================
+     ACCESS
+  ======================================================= */
+
+  if (
+    !user
+  ) {
     return null
   }
 
 
-  /*
-   * Только ученики и родители
-   * имеют доступ к этой странице.
-   */
   if (
-    user.role !== 'Ученик' &&
-    user.role !== 'Родитель'
+    user.role !==
+      'Ученик' &&
+    user.role !==
+      'Родитель'
   ) {
     return (
       <JournalAccessState
@@ -796,13 +1174,10 @@ function StudentJournalPage() {
   }
 
 
-  /*
-   * Родитель есть, но ребёнок
-   * ещё не привязан.
-   */
   if (
     isParent &&
-    linkedStudents.length === 0
+    linkedStudents.length ===
+      0
   ) {
     return (
       <JournalAccessState
@@ -810,28 +1185,30 @@ function StudentJournalPage() {
           UserRound
         }
         title="Ребёнок не привязан"
-        text="Сначала добавьте ребёнка в родительском кабинете. После этого здесь появятся его оценки и посещаемость."
+        text="Сначала добавьте ребёнка в родительском кабинете."
       />
     )
   }
 
 
-  /*
-   * Ждём автоматического выбора
-   * первого ребёнка.
-   */
-  if (!journalStudent) {
+  if (
+    !journalStudent
+  ) {
     return (
       <JournalAccessState
         icon={
           RefreshCcw
         }
         title="Загружаем дневник"
-        text="Подготавливаем учебные данные ребёнка."
+        text="Подготавливаем учебные данные."
       />
     )
   }
 
+
+  /* =======================================================
+     PAGE
+  ======================================================= */
 
   return (
     <div className="student-journal-page">
@@ -848,15 +1225,12 @@ function StudentJournalPage() {
           students={
             linkedStudents
           }
-
           selectedStudentId={
             selectedStudentId
           }
-
           setSelectedStudentId={
             setSelectedStudentId
           }
-
           student={
             journalStudent
           }
@@ -868,23 +1242,20 @@ function StudentJournalPage() {
         user={
           journalStudent
         }
-
         isParent={
           isParent
         }
-
         averageGrade={
           averageGrade
         }
-
         attendancePercent={
-          attendance.percent
+          attendance.total > 0
+            ? attendance.percent
+            : null
         }
-
         gradesCount={
           grades.length
         }
-
         selectedQuarter={
           selectedQuarter
         }
@@ -895,15 +1266,15 @@ function StudentJournalPage() {
         averageGrade={
           averageGrade
         }
-
         gradesCount={
           grades.length
         }
-
+        lessonsCount={
+          lessons.length
+        }
         attendance={
           attendance
         }
-
         excellentGrades={
           excellentGrades
         }
@@ -914,11 +1285,9 @@ function StudentJournalPage() {
         activeTab={
           activeTab
         }
-
         setActiveTab={
           setActiveTab
         }
-
         isParent={
           isParent
         }
@@ -932,15 +1301,12 @@ function StudentJournalPage() {
             selectedQuarter={
               selectedQuarter
             }
-
             setSelectedQuarter={
               setSelectedQuarter
             }
-
             loading={
               gradesLoading
             }
-
             reload={
               loadGrades
             }
@@ -948,17 +1314,11 @@ function StudentJournalPage() {
 
 
           {gradesError && (
-            <div
-              className="auth-error"
-              style={{
-                marginBottom:
-                  16,
-              }}
-            >
-              {
+            <ErrorMessage
+              text={
                 gradesError
               }
-            </div>
+            />
           )}
 
 
@@ -966,25 +1326,66 @@ function StudentJournalPage() {
             loading={
               gradesLoading
             }
-
             grades={
               grades
             }
-
             subjects={
               subjects
             }
-
             averageGrade={
               averageGrade
             }
-
             excellentGrades={
               excellentGrades
             }
-
             goodGrades={
               goodGrades
+            }
+          />
+        </>
+      )}
+
+
+      {activeTab ===
+        'lessons' && (
+        <>
+          <QuarterSelector
+            selectedQuarter={
+              selectedQuarter
+            }
+            setSelectedQuarter={
+              setSelectedQuarter
+            }
+            loading={
+              lessonsLoading
+            }
+            reload={
+              loadLessons
+            }
+          />
+
+
+          {lessonsError && (
+            <ErrorMessage
+              text={
+                lessonsError
+              }
+            />
+          )}
+
+
+          <LessonsView
+            loading={
+              lessonsLoading
+            }
+            lessons={
+              lessonItems
+            }
+            isParent={
+              isParent
+            }
+            onOpen={
+              setSelectedLesson
             }
           />
         </>
@@ -995,17 +1396,11 @@ function StudentJournalPage() {
         'attendance' && (
         <>
           {attendanceError && (
-            <div
-              className="auth-error"
-              style={{
-                marginBottom:
-                  16,
-              }}
-            >
-              {
+            <ErrorMessage
+              text={
                 attendanceError
               }
-            </div>
+            />
           )}
 
 
@@ -1013,15 +1408,12 @@ function StudentJournalPage() {
             records={
               attendanceRecords
             }
-
             attendance={
               attendance
             }
-
             loading={
               attendanceLoading
             }
-
             reload={
               loadAttendance
             }
@@ -1029,41 +1421,71 @@ function StudentJournalPage() {
         </>
       )}
 
+
+      {selectedLesson && (
+        <LessonModal
+          lesson={
+            selectedLesson
+          }
+          isParent={
+            isParent
+          }
+          onClose={() =>
+            setSelectedLesson(
+              null,
+            )
+          }
+        />
+      )}
+
     </div>
   )
 }
 
 
-function JournalAccessState({
-  icon: Icon,
-  title,
-  text,
+/* =========================================================
+   HEADER
+========================================================= */
+
+function JournalHeader({
+  isParent,
 }) {
   return (
-    <div className="student-journal-page">
+    <header className="student-journal-header">
 
-      <section className="student-journal-access">
+      <div className="student-journal-header-icon">
+        <GraduationCap
+          size={28}
+        />
+      </div>
 
-        <div>
-          <Icon
-            size={34}
-          />
-        </div>
 
-        <h1>
-          {title}
-        </h1>
-
+      <div>
         <p>
-          {text}
+          Учебные результаты
         </p>
 
-      </section>
+        <h1>
+          {isParent
+            ? 'Дневник ребёнка'
+            : 'Мой дневник'}
+        </h1>
 
-    </div>
+        <span>
+          {isParent
+            ? 'Оценки, уроки, домашние задания и посещаемость ребёнка.'
+            : 'Ваши оценки, уроки, домашние задания и посещаемость.'}
+        </span>
+      </div>
+
+    </header>
   )
 }
 
+
+/* =========================================================
+   PARENT SWITCHER
+========================================================= */
 
 function ParentStudentSwitcher({
   students,
@@ -1078,49 +1500,29 @@ function ParentStudentSwitcher({
       }
     >
 
-      <div
-        style={{
-          minWidth:
-            0,
-        }}
-      >
-
-        <p
-          style={{
-            margin:
-              '0 0 4px',
-
-            color:
-              '#64748b',
-
-            fontSize:
-              12,
-
-            fontWeight:
-              700,
-          }}
+      <div>
+        <small
+          style={
+            mutedLabelStyle
+          }
         >
           Вы смотрите дневник
-        </p>
-
+        </small>
 
         <strong
           style={{
             display:
               'block',
 
-            color:
-              '#0f172a',
+            marginTop:
+              3,
 
             fontSize:
               16,
           }}
         >
-          {
-            student.name
-          }
+          {student.name}
         </strong>
-
 
         <span
           style={{
@@ -1143,72 +1545,43 @@ function ParentStudentSwitcher({
           {' · '}
 
           {student.className ||
+            student.class_name ||
             'Класс не указан'}
         </span>
-
       </div>
 
 
-      {students.length > 1 && (
-        <label
-          style={
-            parentSelectWrapperStyle
+      {students.length >
+        1 && (
+        <select
+          value={
+            selectedStudentId
           }
-        >
-
-          <span
-            style={{
-              color:
-                '#64748b',
-
-              fontSize:
-                11,
-
-              fontWeight:
-                700,
-            }}
-          >
-            Ребёнок
-          </span>
-
-
-          <select
-            value={
-              selectedStudentId
-            }
-
-            onChange={(
-              event,
-            ) =>
+          onChange={
+            (event) =>
               setSelectedStudentId(
                 event.target.value,
               )
-            }
-
-            style={
-              parentSelectStyle
-            }
-          >
-            {students.map(
-              (item) => (
-                <option
-                  key={
-                    item.id
-                  }
-
-                  value={
-                    item.id
-                  }
-                >
-                  {
-                    item.name
-                  }
-                </option>
-              ),
-            )}
-          </select>
-
-        </label>
+          }
+          style={
+            parentSelectStyle
+          }
+        >
+          {students.map(
+            (item) => (
+              <option
+                key={
+                  item.id
+                }
+                value={
+                  item.id
+                }
+              >
+                {item.name}
+              </option>
+            ),
+          )}
+        </select>
       )}
 
     </section>
@@ -1216,45 +1589,9 @@ function ParentStudentSwitcher({
 }
 
 
-function JournalHeader({
-  isParent,
-}) {
-  return (
-    <header className="student-journal-header">
-
-      <div className="student-journal-header-icon">
-        <GraduationCap
-          size={28}
-        />
-      </div>
-
-
-      <div>
-
-        <p>
-          Учебные результаты
-        </p>
-
-
-        <h1>
-          {isParent
-            ? 'Дневник ребёнка'
-            : 'Мой дневник'}
-        </h1>
-
-
-        <span>
-          {isParent
-            ? 'Оценки, прогноз четвертной и посещаемость вашего ребёнка.'
-            : 'Оценки, прогноз четвертной и посещаемость из школьного журнала.'}
-        </span>
-
-      </div>
-
-    </header>
-  )
-}
-
+/* =========================================================
+   HERO
+========================================================= */
 
 function JournalHero({
   user,
@@ -1270,7 +1607,6 @@ function JournalHero({
       <div className="student-journal-modern-content">
 
         <div className="student-journal-modern-label">
-
           <Sparkles
             size={16}
           />
@@ -1278,7 +1614,6 @@ function JournalHero({
           {isParent
             ? 'Учебный профиль ребёнка'
             : 'Личный учебный профиль'}
-
         </div>
 
 
@@ -1289,52 +1624,42 @@ function JournalHero({
 
 
         <p>
-          {isParent
-            ? 'Здесь отображаются актуальные оценки и посещаемость ребёнка из школьного журнала EduBoost.'
-            : 'Здесь отображаются оценки и посещаемость, которые учитель сохраняет в EduBoost.'}
+          Здесь собраны данные из школьного журнала EduBoost.
         </p>
 
 
         <div className="student-journal-modern-meta">
 
           <span>
-
             <School
               size={17}
             />
 
             {user.school ||
               'Школа не указана'}
-
           </span>
 
 
           <span>
-
             <UserRound
               size={17}
             />
 
             {user.className ||
+              user.class_name ||
               'Класс не указан'}
-
           </span>
 
 
           <span>
-
             <BookOpen
               size={17}
             />
 
-            {gradesCount}
-
-            {' оценок · '}
-
-            {selectedQuarter}
-
-            {' четв.'}
-
+            {gradesCount}{' '}
+            оценок ·{' '}
+            {selectedQuarter}{' '}
+            четв.
           </span>
 
         </div>
@@ -1345,31 +1670,29 @@ function JournalHero({
       <div className="student-journal-modern-badge">
 
         <div className="student-journal-modern-avatar">
-
           {String(
             user.name ||
               'У',
           )
             .charAt(0)
             .toUpperCase()}
-
         </div>
-
 
         <strong>
           {averageGrade ??
             '—'}
         </strong>
 
-
         <span>
           средняя оценка
         </span>
 
-
         <small>
           Посещаемость{' '}
-          {attendancePercent}%
+          {attendancePercent ===
+          null
+            ? '—'
+            : `${attendancePercent}%`}
         </small>
 
       </div>
@@ -1379,9 +1702,14 @@ function JournalHero({
 }
 
 
+/* =========================================================
+   STATS
+========================================================= */
+
 function JournalStats({
   averageGrade,
   gradesCount,
+  lessonsCount,
   attendance,
   excellentGrades,
 }) {
@@ -1396,23 +1724,28 @@ function JournalStats({
 
       icon:
         TrendingUp,
-
-      className:
-        'journal-modern-stat--blue',
     },
 
     {
       label:
-        'Оценок в четверти',
+        'Оценок',
 
       value:
         gradesCount,
 
       icon:
-        BookOpen,
+        GraduationCap,
+    },
 
-      className:
-        'journal-modern-stat--purple',
+    {
+      label:
+        'Уроков',
+
+      value:
+        lessonsCount,
+
+      icon:
+        BookOpen,
     },
 
     {
@@ -1420,41 +1753,24 @@ function JournalStats({
         'Посещаемость',
 
       value:
-        `${attendance.percent}%`,
+        attendance.total ===
+        0
+          ? '—'
+          : `${attendance.percent}%`,
 
       icon:
         CalendarCheck2,
-
-      className:
-        'journal-modern-stat--green',
     },
 
     {
       label:
-        'Отличных оценок',
+        'Пятёрок',
 
       value:
         excellentGrades,
 
       icon:
         CheckCircle2,
-
-      className:
-        'journal-modern-stat--gold',
-    },
-
-    {
-      label:
-        'Пропусков',
-
-      value:
-        attendance.absent,
-
-      icon:
-        XCircle,
-
-      className:
-        'journal-modern-stat--red',
     },
   ]
 
@@ -1467,9 +1783,10 @@ function JournalStats({
           const Icon =
             stat.icon
 
+
           return (
             <article
-              className={`student-journal-modern-stat ${stat.className}`}
+              className="student-journal-modern-stat"
               key={
                 stat.label
               }
@@ -1483,19 +1800,13 @@ function JournalStats({
 
 
               <span>
-
                 <strong>
-                  {
-                    stat.value
-                  }
+                  {stat.value}
                 </strong>
 
                 <small>
-                  {
-                    stat.label
-                  }
+                  {stat.label}
                 </small>
-
               </span>
 
             </article>
@@ -1508,71 +1819,98 @@ function JournalStats({
 }
 
 
+/* =========================================================
+   TABS
+========================================================= */
+
 function JournalTabs({
   activeTab,
   setActiveTab,
   isParent,
 }) {
+  const tabs = [
+    {
+      id:
+        'grades',
+
+      label:
+        isParent
+          ? 'Оценки'
+          : 'Мои оценки',
+
+      icon:
+        GraduationCap,
+    },
+
+    {
+      id:
+        'lessons',
+
+      label:
+        'Уроки',
+
+      icon:
+        BookOpen,
+    },
+
+    {
+      id:
+        'attendance',
+
+      label:
+        'Посещаемость',
+
+      icon:
+        CalendarCheck2,
+    },
+  ]
+
+
   return (
     <section className="student-journal-modern-tabs">
 
-      <button
-        type="button"
+      {tabs.map(
+        (tab) => {
+          const Icon =
+            tab.icon
 
-        className={
-          activeTab ===
-          'grades'
-            ? 'student-journal-modern-tab student-journal-modern-tab--active'
-            : 'student-journal-modern-tab'
-        }
 
-        onClick={() =>
-          setActiveTab(
-            'grades',
+          return (
+            <button
+              type="button"
+              key={
+                tab.id
+              }
+              className={
+                activeTab ===
+                tab.id
+                  ? 'student-journal-modern-tab student-journal-modern-tab--active'
+                  : 'student-journal-modern-tab'
+              }
+              onClick={() =>
+                setActiveTab(
+                  tab.id,
+                )
+              }
+            >
+              <Icon
+                size={18}
+              />
+
+              {tab.label}
+            </button>
           )
-        }
-      >
-
-        <BookOpen
-          size={18}
-        />
-
-        {isParent
-          ? 'Оценки'
-          : 'Мои оценки'}
-
-      </button>
-
-
-      <button
-        type="button"
-
-        className={
-          activeTab ===
-          'attendance'
-            ? 'student-journal-modern-tab student-journal-modern-tab--active'
-            : 'student-journal-modern-tab'
-        }
-
-        onClick={() =>
-          setActiveTab(
-            'attendance',
-          )
-        }
-      >
-
-        <CalendarCheck2
-          size={18}
-        />
-
-        Посещаемость
-
-      </button>
+        },
+      )}
 
     </section>
   )
 }
 
+
+/* =========================================================
+   QUARTER
+========================================================= */
 
 function QuarterSelector({
   selectedQuarter,
@@ -1583,7 +1921,6 @@ function QuarterSelector({
   return (
     <section
       className="student-journal-modern-section"
-
       style={{
         marginBottom:
           18,
@@ -1610,22 +1947,13 @@ function QuarterSelector({
       >
 
         <div>
-
-          <p
-            style={{
-              margin:
-                0,
-
-              opacity:
-                0.6,
-
-              fontSize:
-                13,
-            }}
+          <small
+            style={
+              mutedLabelStyle
+            }
           >
             Учебный период
-          </p>
-
+          </small>
 
           <h2
             style={{
@@ -1633,13 +1961,9 @@ function QuarterSelector({
                 '4px 0 0',
             }}
           >
-            {
-              selectedQuarter
-            }
-
-            {' четверть'}
+            {selectedQuarter}{' '}
+            четверть
           </h2>
-
         </div>
 
 
@@ -1647,9 +1971,6 @@ function QuarterSelector({
           style={{
             display:
               'flex',
-
-            alignItems:
-              'center',
 
             gap:
               10,
@@ -1660,24 +1981,15 @@ function QuarterSelector({
             value={
               selectedQuarter
             }
-
-            onChange={(
-              event,
-            ) =>
-              setSelectedQuarter(
-                Number(
-                  event.target
-                    .value,
-                ),
-              )
+            onChange={
+              (event) =>
+                setSelectedQuarter(
+                  Number(
+                    event.target.value,
+                  ),
+                )
             }
-
-            style={{
-              minWidth:
-                150,
-            }}
           >
-
             <option value={1}>
               1 четверть
             </option>
@@ -1693,32 +2005,24 @@ function QuarterSelector({
             <option value={4}>
               4 четверть
             </option>
-
           </select>
 
 
           <button
             type="button"
-
             onClick={
               reload
             }
-
             disabled={
               loading
             }
-
-            title="Обновить"
-
             style={
               refreshButtonStyle
             }
           >
-
             <RefreshCcw
               size={18}
             />
-
           </button>
 
         </div>
@@ -1730,6 +2034,776 @@ function QuarterSelector({
 }
 
 
+/* =========================================================
+   LESSONS
+========================================================= */
+
+function LessonsView({
+  lessons,
+  loading,
+  isParent,
+  onOpen,
+}) {
+  if (
+    loading
+  ) {
+    return (
+      <section className="student-journal-modern-section">
+        <p className="empty-text">
+          Загружаем уроки...
+        </p>
+      </section>
+    )
+  }
+
+
+  if (
+    lessons.length ===
+    0
+  ) {
+    return (
+      <section className="student-journal-modern-section">
+
+        <JournalEmpty
+          icon={
+            BookOpen
+          }
+          title="Уроков пока нет"
+          text="После заполнения школьного журнала уроки появятся здесь."
+        />
+
+      </section>
+    )
+  }
+
+
+  return (
+    <section className="student-journal-modern-section">
+
+      <div className="student-journal-modern-section-heading">
+
+        <div>
+          <p>
+            Школьный журнал
+          </p>
+
+          <h2>
+            {isParent
+              ? 'Уроки ребёнка'
+              : 'Мои уроки'}
+          </h2>
+        </div>
+
+
+        <span className="student-journal-grade-summary">
+          {lessons.length}{' '}
+          уроков
+        </span>
+
+      </div>
+
+
+      <div
+        style={
+          lessonsGridStyle
+        }
+      >
+
+        {lessons.map(
+          (lesson) => (
+            <LessonCard
+              key={
+                lesson.id
+              }
+              lesson={
+                lesson
+              }
+              onOpen={
+                onOpen
+              }
+            />
+          ),
+        )}
+
+      </div>
+
+    </section>
+  )
+}
+
+
+/* =========================================================
+   LESSON CARD
+========================================================= */
+
+function LessonCard({
+  lesson,
+  onOpen,
+}) {
+  const gradeValues =
+    lesson.grades
+      .map(
+        (grade) =>
+          grade.value,
+      )
+      .filter(
+        (value) =>
+          value !== null &&
+          value !== undefined &&
+          value !== '',
+      )
+
+
+  const gradesText =
+    gradeValues.length >
+    0
+      ? gradeValues.join(
+          ', ',
+        )
+      : 'Нет'
+
+
+  const attendanceText =
+    lesson.attendance
+      ? getShortAttendance(
+          lesson.attendance
+            .status,
+        )
+      : 'Не отмечено'
+
+
+  const homeworkText =
+    lesson.tasks.length >
+    0
+      ? lesson.tasks.length ===
+        1
+        ? 'Есть'
+        : `${lesson.tasks.length} задания`
+      : 'Нет'
+
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onOpen(
+          lesson,
+        )
+      }
+      style={
+        lessonCardStyle
+      }
+    >
+
+      <div
+        style={
+          lessonCardTopStyle
+        }
+      >
+
+        <div
+          style={
+            lessonIconStyle
+          }
+        >
+          <BookOpen
+            size={21}
+          />
+        </div>
+
+
+        <div
+          style={{
+            minWidth:
+              0,
+
+            flex:
+              1,
+          }}
+        >
+
+          <small
+            style={
+              mutedLabelStyle
+            }
+          >
+            {formatDate(
+              lesson.date,
+            )}
+          </small>
+
+
+          <h3
+            style={
+              lessonTitleStyle
+            }
+          >
+            {lesson.subject}
+          </h3>
+
+
+          <p
+            style={
+              lessonTopicStyle
+            }
+          >
+            {lesson.topic ||
+              'Тема не указана'}
+          </p>
+
+        </div>
+
+
+        <ChevronRight
+          size={20}
+          color="#2563eb"
+        />
+
+      </div>
+
+
+      <div
+        style={
+          lessonSummaryGridStyle
+        }
+      >
+
+        <LessonMiniStat
+          label="Оценки"
+          value={
+            gradesText
+          }
+          state={
+            gradeValues.length >
+            0
+              ? 'good'
+              : 'neutral'
+          }
+        />
+
+
+        <LessonMiniStat
+          label="Посещение"
+          value={
+            attendanceText
+          }
+          state={
+            lesson.attendance
+              ? getAttendanceState(
+                  lesson.attendance
+                    .status,
+                )
+              : 'neutral'
+          }
+        />
+
+
+        <LessonMiniStat
+          label="Домашнее задание"
+          value={
+            homeworkText
+          }
+          state={
+            lesson.tasks.length >
+            0
+              ? 'info'
+              : 'neutral'
+          }
+        />
+
+      </div>
+
+
+      <div
+        style={
+          lessonOpenRowStyle
+        }
+      >
+
+        <span
+          style={{
+            color:
+              '#64748b',
+
+            fontSize:
+              12,
+          }}
+        >
+          Нажмите, чтобы
+          открыть урок
+        </span>
+
+
+        <span
+          style={
+            moreLinkStyle
+          }
+        >
+          Подробнее
+
+          <ChevronRight
+            size={14}
+          />
+        </span>
+
+      </div>
+
+    </button>
+  )
+}
+
+
+/* =========================================================
+   MINI STAT
+========================================================= */
+
+function LessonMiniStat({
+  label,
+  value,
+  state = 'neutral',
+}) {
+  const styles = {
+    good: {
+      background:
+        '#ecfdf5',
+
+      color:
+        '#047857',
+    },
+
+    info: {
+      background:
+        '#eff6ff',
+
+      color:
+        '#1d4ed8',
+    },
+
+    warning: {
+      background:
+        '#fff7ed',
+
+      color:
+        '#c2410c',
+    },
+
+    danger: {
+      background:
+        '#fef2f2',
+
+      color:
+        '#b91c1c',
+    },
+
+    neutral: {
+      background:
+        '#f8fafc',
+
+      color:
+        '#64748b',
+    },
+  }
+
+
+  const currentStyle =
+    styles[
+      state
+    ] ||
+    styles.neutral
+
+
+  return (
+    <div
+      style={{
+        ...miniStatStyle,
+
+        background:
+          currentStyle.background,
+      }}
+    >
+
+      <small
+        style={{
+          color:
+            '#94a3b8',
+
+          fontSize:
+            10,
+
+          fontWeight:
+            700,
+        }}
+      >
+        {label}
+      </small>
+
+
+      <strong
+        style={{
+          color:
+            currentStyle.color,
+
+          fontSize:
+            String(
+              value,
+            ).length > 12
+              ? 11
+              : 14,
+
+          lineHeight:
+            1.25,
+
+          wordBreak:
+            'break-word',
+        }}
+      >
+        {value}
+      </strong>
+
+    </div>
+  )
+}
+
+
+/* =========================================================
+   LESSON MODAL
+========================================================= */
+
+function LessonModal({
+  lesson,
+  isParent,
+  onClose,
+}) {
+  return (
+    <div
+      style={
+        modalBackdropStyle
+      }
+      onMouseDown={
+        (event) => {
+          if (
+            event.target ===
+            event.currentTarget
+          ) {
+            onClose()
+          }
+        }
+      }
+    >
+
+      <section
+        style={
+          modalCardStyle
+        }
+      >
+
+        <div
+          style={
+            modalHeaderStyle
+          }
+        >
+
+          <div>
+            <small
+              style={
+                blueLabelStyle
+              }
+            >
+              {isParent
+                ? 'Урок ребёнка'
+                : 'Школьный урок'}
+            </small>
+
+
+            <h2
+              style={{
+                margin:
+                  '5px 0 0',
+
+                color:
+                  '#082451',
+              }}
+            >
+              {lesson.subject}
+            </h2>
+
+
+            <p
+              style={{
+                margin:
+                  '5px 0 0',
+
+                color:
+                  '#64748b',
+              }}
+            >
+              {formatDate(
+                lesson.date,
+              )}
+
+              {' · '}
+
+              {lesson.quarter}{' '}
+              четверть
+            </p>
+          </div>
+
+
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            style={
+              closeButtonStyle
+            }
+          >
+            <X
+              size={20}
+            />
+          </button>
+
+        </div>
+
+
+        <div
+          style={
+            modalContentStyle
+          }
+        >
+
+          <LessonSection
+            title="Тема урока"
+          >
+            {lesson.topic ||
+              'Тема пока не указана.'}
+          </LessonSection>
+
+
+          <LessonSection
+            title={
+              isParent
+                ? 'Посещаемость ребёнка'
+                : 'Моя посещаемость'
+            }
+          >
+
+            {lesson.attendance ? (
+              <>
+                <strong>
+                  {getAttendanceStatusLabel(
+                    lesson.attendance
+                      .status,
+                  )}
+                </strong>
+
+
+                {lesson.attendance
+                  .comment && (
+                  <p
+                    style={
+                      sectionCommentStyle
+                    }
+                  >
+                    {
+                      lesson
+                        .attendance
+                        .comment
+                    }
+                  </p>
+                )}
+              </>
+            ) : (
+              'Учитель пока не отметил посещаемость.'
+            )}
+
+          </LessonSection>
+
+
+          <LessonSection
+            title={
+              isParent
+                ? 'Оценки ребёнка'
+                : 'Мои оценки'
+            }
+          >
+
+            {lesson.grades.length ===
+            0 ? (
+              'Оценок за этот урок нет.'
+            ) : (
+              <div
+                style={
+                  modalListStyle
+                }
+              >
+
+                {lesson.grades.map(
+                  (grade) => (
+                    <div
+                      key={
+                        grade.id
+                      }
+                      style={
+                        modalGradeStyle
+                      }
+                    >
+
+                      <span
+                        style={
+                          gradeBadgeStyle(
+                            grade.value,
+                          )
+                        }
+                      >
+                        {grade.value}
+                      </span>
+
+
+                      <div>
+                        <strong>
+                          {getGradeTypeLabel(
+                            grade.workType,
+                          )}
+                        </strong>
+
+                        {grade.comment && (
+                          <p
+                            style={
+                              sectionCommentStyle
+                            }
+                          >
+                            {grade.comment}
+                          </p>
+                        )}
+                      </div>
+
+                    </div>
+                  ),
+                )}
+
+              </div>
+            )}
+
+          </LessonSection>
+
+
+          <LessonSection
+            title="Домашнее задание"
+          >
+
+            {lesson.tasks.length ===
+            0 ? (
+              'Домашнее задание не задано.'
+            ) : (
+              <div
+                style={
+                  modalListStyle
+                }
+              >
+
+                {lesson.tasks.map(
+                  (task) => (
+                    <article
+                      key={
+                        task.id
+                      }
+                      style={
+                        homeworkCardStyle
+                      }
+                    >
+
+                      <strong>
+                        {task.title}
+                      </strong>
+
+
+                      {task.description && (
+                        <p
+                          style={
+                            sectionCommentStyle
+                          }
+                        >
+                          {task.description}
+                        </p>
+                      )}
+
+
+                      <small
+                        style={{
+                          color:
+                            '#64748b',
+                        }}
+                      >
+                        {task.deadline
+                          ? `Сдать до ${formatDeadline(
+                              task.deadline,
+                            )}`
+                          : 'Без срока сдачи'}
+                      </small>
+
+                    </article>
+                  ),
+                )}
+
+              </div>
+            )}
+
+          </LessonSection>
+
+        </div>
+
+      </section>
+
+    </div>
+  )
+}
+
+
+function LessonSection({
+  title,
+  children,
+}) {
+  return (
+    <section
+      style={
+        lessonSectionStyle
+      }
+    >
+
+      <small
+        style={
+          mutedLabelStyle
+        }
+      >
+        {title}
+      </small>
+
+
+      <div
+        style={{
+          marginTop:
+            7,
+
+          color:
+            '#082451',
+
+          lineHeight:
+            1.5,
+        }}
+      >
+        {children}
+      </div>
+
+    </section>
+  )
+}
+
+
+/* =========================================================
+   GRADES
+========================================================= */
+
 function GradesView({
   loading,
   grades,
@@ -1738,7 +2812,9 @@ function GradesView({
   excellentGrades,
   goodGrades,
 }) {
-  if (loading) {
+  if (
+    loading
+  ) {
     return (
       <section className="student-journal-modern-section">
 
@@ -1759,7 +2835,6 @@ function GradesView({
         <div className="student-journal-modern-section-heading">
 
           <div>
-
             <p>
               Предметы
             </p>
@@ -1767,7 +2842,6 @@ function GradesView({
             <h2>
               Результаты за четверть
             </h2>
-
           </div>
 
 
@@ -1785,9 +2859,7 @@ function GradesView({
             icon={
               BookOpen
             }
-
             title="Оценок пока нет"
-
             text="В этой четверти учитель пока не выставил оценок."
           />
         ) : (
@@ -1799,7 +2871,6 @@ function GradesView({
                   key={
                     item.subject
                   }
-
                   item={
                     item
                   }
@@ -1818,7 +2889,6 @@ function GradesView({
         <div className="student-journal-modern-section-heading">
 
           <div>
-
             <p>
               Результаты
             </p>
@@ -1826,20 +2896,13 @@ function GradesView({
             <h2>
               История оценок
             </h2>
-
           </div>
 
 
           <span className="student-journal-grade-summary">
-            5: {
-              excellentGrades
-            }
-
+            5: {excellentGrades}
             {' · '}
-
-            4: {
-              goodGrades
-            }
+            4: {goodGrades}
           </span>
 
         </div>
@@ -1851,9 +2914,7 @@ function GradesView({
             icon={
               FileText
             }
-
             title="История пуста"
-
             text="Новые оценки появятся здесь после выставления учителем."
           />
         ) : (
@@ -1865,7 +2926,6 @@ function GradesView({
                   key={
                     grade.id
                   }
-
                   grade={
                     grade
                   }
@@ -1882,6 +2942,10 @@ function GradesView({
   )
 }
 
+
+/* =========================================================
+   SUBJECT
+========================================================= */
 
 function SubjectCard({
   item,
@@ -1909,27 +2973,18 @@ function SubjectCard({
       <div className="student-subject-card-top">
 
         <div>
-
           <strong>
-            {
-              item.subject
-            }
+            {item.subject}
           </strong>
-
 
           <span>
             Оценок:{' '}
-            {
-              item.count
-            }
-
+            {item.count}
             {' / '}
-
             {
               item.minimumRequired
             }
           </span>
-
         </div>
 
 
@@ -1946,36 +3001,23 @@ function SubjectCard({
 
 
       <div className="student-subject-progress">
-
         <span
           style={{
             width:
               `${progress}%`,
           }}
         />
-
       </div>
 
 
       <div
-        style={{
-          display:
-            'grid',
-
-          gridTemplateColumns:
-            'repeat(auto-fit, minmax(130px, 1fr))',
-
-          gap:
-            8,
-
-          marginTop:
-            12,
-        }}
+        style={
+          subjectStatsStyle
+        }
       >
 
         <MiniResult
           label="Прогноз"
-
           value={
             item.isAttested
               ? item.suggestedGrade
@@ -1986,7 +3028,6 @@ function SubjectCard({
 
         <MiniResult
           label="Четвертная"
-
           value={
             item.finalGrade ??
             '—'
@@ -1996,7 +3037,6 @@ function SubjectCard({
 
         <MiniResult
           label="До 5"
-
           value={
             item.targets
               ?.toFive ===
@@ -2015,29 +3055,14 @@ function SubjectCard({
 
       {!item.isAttested && (
         <div
-          style={{
-            marginTop:
-              12,
-
-            padding:
-              '9px 11px',
-
-            borderRadius:
-              10,
-
-            background:
-              '#fff7ed',
-
-            fontSize:
-              13,
-          }}
+          style={
+            warningStyle
+          }
         >
           Не хватает оценок:{' '}
 
           <strong>
-            {
-              item.missing
-            }
+            {item.missing}
           </strong>
         </div>
       )}
@@ -2045,25 +3070,11 @@ function SubjectCard({
 
       {item.fiveForecast && (
         <div
-          style={{
-            marginTop:
-              9,
-
-            padding:
-              '9px 11px',
-
-            borderRadius:
-              10,
-
-            background:
-              '#eff6ff',
-
-            fontSize:
-              13,
-          }}
+          style={
+            forecastStyle
+          }
         >
-          Если следующая
-          контрольная будет{' '}
+          Если следующая контрольная будет{' '}
 
           <strong>
             5
@@ -2089,21 +3100,6 @@ function SubjectCard({
         </div>
       )}
 
-
-      <small
-        style={{
-          display:
-            'block',
-
-          marginTop:
-            10,
-        }}
-      >
-        {getGradeDescription(
-          item.weightedAverage,
-        )}
-      </small>
-
     </article>
   )
 }
@@ -2115,42 +3111,25 @@ function MiniResult({
 }) {
   return (
     <div
-      style={{
-        padding:
-          '9px 10px',
-
-        borderRadius:
-          10,
-
-        background:
-          '#f8fafc',
-      }}
+      style={
+        miniResultStyle
+      }
     >
-
-      <div
-        style={{
-          fontSize:
-            11,
-
-          opacity:
-            0.6,
-
-          marginBottom:
-            2,
-        }}
-      >
+      <small>
         {label}
-      </div>
-
+      </small>
 
       <strong>
         {value}
       </strong>
-
     </div>
   )
 }
 
+
+/* =========================================================
+   GRADE RECORD
+========================================================= */
 
 function GradeRecord({
   grade,
@@ -2165,9 +3144,7 @@ function GradeRecord({
           ),
         )}`}
       >
-        {
-          grade.value
-        }
+        {grade.value}
       </div>
 
 
@@ -2176,13 +3153,9 @@ function GradeRecord({
         <div className="student-grade-record-title">
 
           <div>
-
             <h3>
-              {
-                grade.subject
-              }
+              {grade.subject}
             </h3>
-
 
             <p>
               {getGradeTypeLabel(
@@ -2195,7 +3168,6 @@ function GradeRecord({
                 grade.date,
               )}
             </p>
-
           </div>
 
 
@@ -2216,9 +3188,7 @@ function GradeRecord({
 
             <span>
               Тема:{' '}
-              {
-                grade.topic
-              }
+              {grade.topic}
             </span>
 
           </div>
@@ -2234,19 +3204,14 @@ function GradeRecord({
               />
             </div>
 
-
             <span>
-
               <strong>
                 Комментарий учителя
               </strong>
 
               <p>
-                {
-                  grade.comment
-                }
+                {grade.comment}
               </p>
-
             </span>
 
           </div>
@@ -2258,6 +3223,10 @@ function GradeRecord({
   )
 }
 
+
+/* =========================================================
+   ATTENDANCE
+========================================================= */
 
 function AttendanceView({
   records,
@@ -2273,7 +3242,6 @@ function AttendanceView({
         <div className="student-journal-modern-section-heading">
 
           <div>
-
             <p>
               Статистика
             </p>
@@ -2281,56 +3249,25 @@ function AttendanceView({
             <h2>
               Посещаемость
             </h2>
-
           </div>
 
 
-          <div
-            style={{
-              display:
-                'flex',
-
-              alignItems:
-                'center',
-
-              gap:
-                8,
-            }}
+          <button
+            type="button"
+            onClick={
+              reload
+            }
+            disabled={
+              loading
+            }
+            style={
+              refreshButtonStyle
+            }
           >
-
-            <div className="student-attendance-percent-badge">
-              {
-                attendance.percent
-              }
-              %
-            </div>
-
-
-            <button
-              type="button"
-
-              onClick={
-                reload
-              }
-
-              disabled={
-                loading
-              }
-
-              title="Обновить"
-
-              style={
-                refreshButtonStyle
-              }
-            >
-
-              <RefreshCcw
-                size={18}
-              />
-
-            </button>
-
-          </div>
+            <RefreshCcw
+              size={18}
+            />
+          </button>
 
         </div>
 
@@ -2339,22 +3276,27 @@ function AttendanceView({
           <p className="empty-text">
             Загружаем посещаемость...
           </p>
+        ) : attendance.total ===
+        0 ? (
+          <JournalEmpty
+            icon={
+              CalendarCheck2
+            }
+            title="Посещаемость ещё не отмечена"
+            text="После первого отмеченного урока здесь появится статистика."
+          />
         ) : (
           <>
-
             <div className="student-attendance-modern-grid">
 
               <AttendanceCard
                 icon={
                   CheckCircle2
                 }
-
                 value={
                   attendance.present
                 }
-
                 label="Присутствовал"
-
                 className="attendance-modern--green"
               />
 
@@ -2363,13 +3305,10 @@ function AttendanceView({
                 icon={
                   XCircle
                 }
-
                 value={
                   attendance.absent
                 }
-
                 label="Отсутствовал"
-
                 className="attendance-modern--red"
               />
 
@@ -2378,29 +3317,11 @@ function AttendanceView({
                 icon={
                   Clock3
                 }
-
                 value={
                   attendance.late
                 }
-
                 label="Опоздал"
-
                 className="attendance-modern--orange"
-              />
-
-
-              <AttendanceCard
-                icon={
-                  FileText
-                }
-
-                value={
-                  attendance.excused
-                }
-
-                label="Уважительная причина"
-
-                className="attendance-modern--blue"
               />
 
             </div>
@@ -2409,34 +3330,26 @@ function AttendanceView({
             <div className="student-attendance-overall">
 
               <div>
-
                 <span>
                   Общая посещаемость
                 </span>
 
                 <strong>
-                  {
-                    attendance.percent
-                  }
-                  %
+                  {attendance.percent}%
                 </strong>
-
               </div>
 
 
               <div>
-
                 <span
                   style={{
                     width:
                       `${attendance.percent}%`,
                   }}
                 />
-
               </div>
 
             </div>
-
           </>
         )}
 
@@ -2448,7 +3361,6 @@ function AttendanceView({
         <div className="student-journal-modern-section-heading">
 
           <div>
-
             <p>
               Посещения
             </p>
@@ -2456,34 +3368,25 @@ function AttendanceView({
             <h2>
               История посещаемости
             </h2>
-
           </div>
 
 
           <span className="student-journal-grade-summary">
             Записей:{' '}
-            {
-              records.length
-            }
+            {records.length}
           </span>
 
         </div>
 
 
-        {loading ? (
-          <p className="empty-text">
-            Загрузка...
-          </p>
-        ) : records.length ===
-          0 ? (
+        {records.length ===
+        0 ? (
           <JournalEmpty
             icon={
               CalendarCheck2
             }
-
             title="Записей пока нет"
-
-            text="Информация появится после того, как учитель отметит посещаемость."
+            text="Информация появится после отметки учителем."
           />
         ) : (
           <div className="student-attendance-history">
@@ -2494,7 +3397,6 @@ function AttendanceView({
                   key={
                     record.id
                   }
-
                   record={
                     record
                   }
@@ -2531,7 +3433,6 @@ function AttendanceCard({
 
 
       <span>
-
         <strong>
           {value}
         </strong>
@@ -2539,7 +3440,6 @@ function AttendanceCard({
         <small>
           {label}
         </small>
-
       </span>
 
     </article>
@@ -2550,52 +3450,27 @@ function AttendanceCard({
 function AttendanceRecord({
   record,
 }) {
-  const status =
-    getAttendanceData(
-      record.status,
-    )
-
-  const Icon =
-    status.icon
-
-
   return (
     <article className="student-attendance-record">
-
-      <div
-        className={`student-attendance-record-icon ${status.className}`}
-      >
-
-        <Icon
-          size={21}
-        />
-
-      </div>
-
 
       <div className="student-attendance-record-main">
 
         <div>
-
           <h3>
-            {
-              record.subject
-            }
+            {record.subject}
           </h3>
-
 
           <span>
             {record.teacherName ||
               'Учитель'}
           </span>
-
         </div>
 
 
         <p>
-          {
-            status.label
-          }
+          {getAttendanceStatusLabel(
+            record.status,
+          )}
 
           {' · '}
 
@@ -2614,19 +3489,14 @@ function AttendanceRecord({
               />
             </div>
 
-
             <span>
-
               <strong>
                 Комментарий учителя
               </strong>
 
               <p>
-                {
-                  record.comment
-                }
+                {record.comment}
               </p>
-
             </span>
 
           </div>
@@ -2635,6 +3505,41 @@ function AttendanceRecord({
       </div>
 
     </article>
+  )
+}
+
+
+/* =========================================================
+   STATES
+========================================================= */
+
+function JournalAccessState({
+  icon: Icon,
+  title,
+  text,
+}) {
+  return (
+    <div className="student-journal-page">
+
+      <section className="student-journal-access">
+
+        <div>
+          <Icon
+            size={34}
+          />
+        </div>
+
+        <h1>
+          {title}
+        </h1>
+
+        <p>
+          {text}
+        </p>
+
+      </section>
+
+    </div>
   )
 }
 
@@ -2648,18 +3553,14 @@ function JournalEmpty({
     <div className="student-journal-empty">
 
       <div>
-
         <Icon
           size={30}
         />
-
       </div>
-
 
       <h3>
         {title}
       </h3>
-
 
       <p>
         {text}
@@ -2670,11 +3571,80 @@ function JournalEmpty({
 }
 
 
+function ErrorMessage({
+  text,
+}) {
+  return (
+    <div
+      className="auth-error"
+      style={{
+        marginBottom:
+          16,
+      }}
+    >
+      {text}
+    </div>
+  )
+}
+
+
+/* =========================================================
+   NORMALIZE
+========================================================= */
+
+function normalizeJournalLesson(
+  lesson,
+) {
+  return {
+    id:
+      lesson.id,
+
+    school:
+      lesson.school,
+
+    schoolId:
+      lesson.school_id,
+
+    className:
+      lesson.class_name,
+
+    subject:
+      lesson.subject,
+
+    quarter:
+      Number(
+        lesson.quarter ||
+          1,
+      ),
+
+    date:
+      lesson.lesson_date,
+
+    topic:
+      lesson.topic ||
+      '',
+
+    teacherId:
+      lesson.teacher_id,
+
+    scheduleLessonId:
+      lesson.schedule_lesson_id,
+  }
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function getGradeClass(
   value,
 ) {
   const grade =
-    Number(value)
+    Number(
+      value,
+    )
+
 
   if (
     value === null ||
@@ -2687,166 +3657,192 @@ function getGradeClass(
     return ''
   }
 
+
   if (
-    grade >= 4.5
+    grade >=
+    4.5
   ) {
     return 'grade-modern--excellent'
   }
 
+
   if (
-    grade >= 3.5
+    grade >=
+    3.5
   ) {
     return 'grade-modern--good'
   }
 
+
   if (
-    grade >= 2.5
+    grade >=
+    2.5
   ) {
     return 'grade-modern--normal'
   }
+
 
   return 'grade-modern--bad'
 }
 
 
-function getGradeDescription(
-  value,
-) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return 'Пока нет данных'
-  }
-
-  const grade =
-    Number(value)
-
-  if (
-    grade >= 4.5
-  ) {
-    return 'Отличный результат'
-  }
-
-  if (
-    grade >= 3.5
-  ) {
-    return 'Хороший результат'
-  }
-
-  if (
-    grade >= 2.5
-  ) {
-    return 'Можно улучшить'
-  }
-
-  return 'Нужно обратить внимание'
-}
-
-
-function getAttendanceData(
+function getShortAttendance(
   status,
 ) {
-  const values = {
-    present: {
-      label:
-        'Присутствовал',
+  const labels = {
+    present:
+      'Присутствовал',
 
-      icon:
-        CheckCircle2,
+    absent:
+      'Отсутствовал',
 
-      className:
-        'attendance-record--green',
-    },
+    late:
+      'Опоздал',
 
-    absent: {
-      label:
-        'Отсутствовал',
-
-      icon:
-        XCircle,
-
-      className:
-        'attendance-record--red',
-    },
-
-    late: {
-      label:
-        'Опоздал',
-
-      icon:
-        Clock3,
-
-      className:
-        'attendance-record--orange',
-    },
-
-    excused: {
-      label:
-        'Уважительная причина',
-
-      icon:
-        FileText,
-
-      className:
-        'attendance-record--blue',
-    },
+    excused:
+      'Уважительная',
   }
 
 
   return (
-    values[
+    labels[
       status
-    ] || {
-      label:
-        'Не указан',
-
-      icon:
-        CalendarCheck2,
-
-      className:
-        'attendance-record--blue',
-    }
+    ] ||
+    'Не отмечено'
   )
+}
+
+
+function getAttendanceState(
+  status,
+) {
+  if (
+    status ===
+    'present'
+  ) {
+    return 'good'
+  }
+
+
+  if (
+    status ===
+    'late'
+  ) {
+    return 'warning'
+  }
+
+
+  if (
+    status ===
+    'absent'
+  ) {
+    return 'danger'
+  }
+
+
+  if (
+    status ===
+    'excused'
+  ) {
+    return 'info'
+  }
+
+
+  return 'neutral'
 }
 
 
 function formatDate(
   date,
 ) {
-  if (!date) {
-    return 'Дата не указана'
-  }
-
-  const parsedDate =
-    new Date(
-      `${date}T12:00:00`,
-    )
-
   if (
-    Number.isNaN(
-      parsedDate.getTime(),
-    )
+    !date
   ) {
     return 'Дата не указана'
   }
 
-  return parsedDate
-    .toLocaleDateString(
-      'ru-RU',
-      {
-        day:
-          '2-digit',
 
-        month:
-          'long',
-
-        year:
-          'numeric',
-      },
+  const parsed =
+    new Date(
+      `${date}T12:00:00`,
     )
+
+
+  if (
+    Number.isNaN(
+      parsed.getTime(),
+    )
+  ) {
+    return date
+  }
+
+
+  return parsed.toLocaleDateString(
+    'ru-RU',
+    {
+      day:
+        '2-digit',
+
+      month:
+        'long',
+
+      year:
+        'numeric',
+    },
+  )
 }
 
+
+function formatDeadline(
+  value,
+) {
+  if (
+    !value
+  ) {
+    return '—'
+  }
+
+
+  const parsed =
+    new Date(
+      value,
+    )
+
+
+  if (
+    Number.isNaN(
+      parsed.getTime(),
+    )
+  ) {
+    return value
+  }
+
+
+  return parsed.toLocaleString(
+    'ru-RU',
+    {
+      day:
+        '2-digit',
+
+      month:
+        '2-digit',
+
+      year:
+        'numeric',
+
+      hour:
+        '2-digit',
+
+      minute:
+        '2-digit',
+    },
+  )
+}
+
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const refreshButtonStyle = {
   width:
@@ -2911,18 +3907,6 @@ const parentSwitcherStyle = {
 }
 
 
-const parentSelectWrapperStyle = {
-  display:
-    'grid',
-
-  gap:
-    5,
-
-  minWidth:
-    190,
-}
-
-
 const parentSelectStyle = {
   minWidth:
     190,
@@ -2941,21 +3925,523 @@ const parentSelectStyle = {
 
   background:
     '#ffffff',
+}
+
+
+const mutedLabelStyle = {
+  display:
+    'block',
 
   color:
-    '#0f172a',
+    '#64748b',
 
-  font:
-    'inherit',
+  fontSize:
+    10,
+
+  fontWeight:
+    900,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const blueLabelStyle = {
+  ...mutedLabelStyle,
+
+  color:
+    '#2563eb',
+}
+
+
+const lessonsGridStyle = {
+  display:
+    'grid',
+
+  gridTemplateColumns:
+    'repeat(auto-fit, minmax(260px, 1fr))',
+
+  gap:
+    12,
+}
+
+
+const lessonCardStyle = {
+  width:
+    '100%',
+
+  padding:
+    15,
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    16,
+
+  background:
+    '#ffffff',
+
+  cursor:
+    'pointer',
+
+  textAlign:
+    'left',
+}
+
+
+const lessonCardTopStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'flex-start',
+
+  gap:
+    11,
+}
+
+
+const lessonIconStyle = {
+  width:
+    42,
+
+  height:
+    42,
+
+  flex:
+    '0 0 42px',
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  borderRadius:
+    12,
+
+  background:
+    '#eff6ff',
+
+  color:
+    '#2563eb',
+}
+
+
+const lessonTitleStyle = {
+  margin:
+    '3px 0 0',
+
+  color:
+    '#082451',
+
+  fontSize:
+    17,
+}
+
+
+const lessonTopicStyle = {
+  margin:
+    '4px 0 0',
+
+  color:
+    '#64748b',
 
   fontSize:
     13,
 
-  fontWeight:
-    700,
+  whiteSpace:
+    'nowrap',
 
-  outline:
-    'none',
+  overflow:
+    'hidden',
+
+  textOverflow:
+    'ellipsis',
+}
+
+
+const lessonSummaryGridStyle = {
+  display:
+    'grid',
+
+  gridTemplateColumns:
+    'repeat(3, minmax(0, 1fr))',
+
+  gap:
+    7,
+
+  marginTop:
+    13,
+}
+
+
+const miniStatStyle = {
+  padding:
+    8,
+
+  minHeight:
+    58,
+
+  borderRadius:
+    10,
+
+  textAlign:
+    'center',
+
+  display:
+    'grid',
+
+  alignContent:
+    'center',
+
+  gap:
+    3,
+}
+
+
+const lessonOpenRowStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    10,
+
+  marginTop:
+    12,
+
+  paddingTop:
+    11,
+
+  borderTop:
+    '1px solid #eef2f7',
+}
+
+
+const moreLinkStyle = {
+  display:
+    'inline-flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    4,
+
+  color:
+    '#2563eb',
+
+  fontSize:
+    12,
+
+  fontWeight:
+    800,
+}
+
+
+const subjectStatsStyle = {
+  display:
+    'grid',
+
+  gridTemplateColumns:
+    'repeat(auto-fit, minmax(110px, 1fr))',
+
+  gap:
+    8,
+
+  marginTop:
+    12,
+}
+
+
+const miniResultStyle = {
+  padding:
+    '9px 10px',
+
+  borderRadius:
+    10,
+
+  background:
+    '#f8fafc',
+}
+
+
+const warningStyle = {
+  marginTop:
+    12,
+
+  padding:
+    '9px 11px',
+
+  borderRadius:
+    10,
+
+  background:
+    '#fff7ed',
+
+  fontSize:
+    13,
+}
+
+
+const forecastStyle = {
+  marginTop:
+    9,
+
+  padding:
+    '9px 11px',
+
+  borderRadius:
+    10,
+
+  background:
+    '#eff6ff',
+
+  fontSize:
+    13,
+}
+
+
+/* =========================================================
+   MODAL STYLES
+========================================================= */
+
+const modalBackdropStyle = {
+  position:
+    'fixed',
+
+  inset:
+    0,
+
+  zIndex:
+    1300,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  padding:
+    18,
+
+  background:
+    'rgba(15, 23, 42, 0.5)',
+}
+
+
+const modalCardStyle = {
+  width:
+    'min(650px, 100%)',
+
+  maxHeight:
+    '90vh',
+
+  overflowY:
+    'auto',
+
+  padding:
+    20,
+
+  borderRadius:
+    22,
+
+  background:
+    '#ffffff',
+
+  boxShadow:
+    '0 24px 90px rgba(15, 23, 42, 0.28)',
+}
+
+
+const modalHeaderStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'flex-start',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    14,
+
+  paddingBottom:
+    16,
+
+  borderBottom:
+    '1px solid #e2e8f0',
+}
+
+
+const closeButtonStyle = {
+  width:
+    40,
+
+  height:
+    40,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  border:
+    '1px solid #e2e8f0',
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+
+  cursor:
+    'pointer',
+}
+
+
+const modalContentStyle = {
+  display:
+    'grid',
+
+  gap:
+    12,
+
+  marginTop:
+    15,
+}
+
+
+const lessonSectionStyle = {
+  padding:
+    14,
+
+  border:
+    '1px solid #e2e8f0',
+
+  borderRadius:
+    14,
+
+  background:
+    '#fbfdff',
+}
+
+
+const modalListStyle = {
+  display:
+    'grid',
+
+  gap:
+    8,
+}
+
+
+const modalGradeStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    10,
+
+  padding:
+    9,
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+}
+
+
+function gradeBadgeStyle(
+  value,
+) {
+  const number =
+    Number(
+      value,
+    )
+
+
+  return {
+    width:
+      42,
+
+    height:
+      42,
+
+    flex:
+      '0 0 42px',
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    borderRadius:
+      11,
+
+    background:
+      number >= 5
+        ? '#dcfce7'
+        : number >= 4
+          ? '#dbeafe'
+          : number >= 3
+            ? '#fef3c7'
+            : '#fee2e2',
+
+    color:
+      '#082451',
+
+    fontSize:
+      17,
+
+    fontWeight:
+      900,
+  }
+}
+
+
+const homeworkCardStyle = {
+  padding:
+    11,
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+}
+
+
+const sectionCommentStyle = {
+  margin:
+    '5px 0 0',
+
+  color:
+    '#64748b',
+
+  fontSize:
+    13,
+
+  lineHeight:
+    1.5,
 }
 
 

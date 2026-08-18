@@ -1,15 +1,26 @@
 import { useState } from 'react'
+
 import {
   Link,
   useNavigate,
 } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+
+import {
+  useAuth,
+} from '../context/AuthContext'
 
 function RegisterPage() {
-  const navigate = useNavigate()
-  const { register } = useAuth()
+  const navigate =
+    useNavigate()
 
-  const [form, setForm] = useState({
+  const {
+    register,
+  } = useAuth()
+
+  const [
+    form,
+    setForm,
+  ] = useState({
     name: '',
     email: '',
     role: '',
@@ -19,27 +30,55 @@ function RegisterPage() {
     passwordConfirmation: '',
   })
 
-  const [error, setError] = useState('')
-  const [isSubmitting, setIsSubmitting] =
-    useState(false)
+  const [
+    error,
+    setError,
+  ] = useState('')
+
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] = useState(false)
 
   function handleChange(event) {
-    const { name, value } = event.target
+    const {
+      name,
+      value,
+    } = event.target
 
-    setForm((previousForm) => ({
-      ...previousForm,
-      [name]: value,
-    }))
+    setForm(
+      (previousForm) => ({
+        ...previousForm,
+        [name]: value,
+      }),
+    )
   }
 
   async function handleSubmit(event) {
     event.preventDefault()
+
     setError('')
 
-    if (form.password.length < 6) {
+    if (
+      ![
+        'Ученик',
+        'Родитель',
+      ].includes(form.role)
+    ) {
+      setError(
+        'Выберите доступную роль',
+      )
+
+      return
+    }
+
+    if (
+      form.password.length < 6
+    ) {
       setError(
         'Пароль должен содержать минимум 6 символов',
       )
+
       return
     }
 
@@ -47,15 +86,22 @@ function RegisterPage() {
       form.password !==
       form.passwordConfirmation
     ) {
-      setError('Пароли не совпадают')
+      setError(
+        'Пароли не совпадают',
+      )
+
       return
     }
 
     if (
-      form.role === 'Ученик' &&
+      form.role ===
+        'Ученик' &&
       !form.className
     ) {
-      setError('Выберите класс')
+      setError(
+        'Выберите класс',
+      )
+
       return
     }
 
@@ -65,7 +111,9 @@ function RegisterPage() {
       await register(form)
 
       navigate('/')
-    } catch (registerError) {
+    } catch (
+      registerError
+    ) {
       setError(
         registerError.message ||
           'Не удалось создать аккаунт',
@@ -79,17 +127,50 @@ function RegisterPage() {
     <div className="auth-page">
       <form
         className="auth-card"
-        onSubmit={handleSubmit}
+        onSubmit={
+          handleSubmit
+        }
       >
         <h1 className="auth-logo">
-          Edu<span>Boost</span>
+          Edu
+          <span>
+            Boost
+          </span>
         </h1>
 
-        <h2>Регистрация</h2>
+        <h2>
+          Регистрация
+        </h2>
 
         <p className="auth-description">
-          Создайте аккаунт EduBoost
+          Создайте аккаунт
+          ученика или родителя
         </p>
+
+        <div
+          style={{
+            padding:
+              '12px 14px',
+            marginBottom:
+              '18px',
+            borderRadius:
+              '14px',
+            background:
+              '#f4f8ff',
+            color:
+              '#49627f',
+            fontSize:
+              '13px',
+            lineHeight:
+              1.5,
+          }}
+        >
+          Учителя, завучи,
+          директора и другие
+          сотрудники получают
+          доступ через
+          администрацию школы.
+        </div>
 
         {error && (
           <div className="auth-error">
@@ -98,39 +179,65 @@ function RegisterPage() {
         )}
 
         <label className="form-group">
-          <span>Имя и фамилия</span>
+          <span>
+            Имя и фамилия
+          </span>
 
           <input
             name="name"
-            value={form.name}
-            onChange={handleChange}
+            value={
+              form.name
+            }
+            onChange={
+              handleChange
+            }
             required
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
+            autoComplete="name"
           />
         </label>
 
         <label className="form-group">
-          <span>Электронная почта</span>
+          <span>
+            Электронная почта
+          </span>
 
           <input
             type="email"
             name="email"
-            value={form.email}
-            onChange={handleChange}
+            value={
+              form.email
+            }
+            onChange={
+              handleChange
+            }
             required
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
+            autoComplete="email"
           />
         </label>
 
         <label className="form-group">
-          <span>Роль</span>
+          <span>
+            Кто вы?
+          </span>
 
           <select
             name="role"
-            value={form.role}
-            onChange={handleChange}
+            value={
+              form.role
+            }
+            onChange={
+              handleChange
+            }
             required
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
           >
             <option value="">
               Выберите роль
@@ -140,10 +247,6 @@ function RegisterPage() {
               Ученик
             </option>
 
-            <option value="Учитель">
-              Учитель
-            </option>
-
             <option value="Родитель">
               Родитель
             </option>
@@ -151,31 +254,68 @@ function RegisterPage() {
         </label>
 
         <label className="form-group">
-          <span>Школа</span>
+          <span>
+            Школа
+          </span>
 
           <input
             name="school"
-            value={form.school}
-            onChange={handleChange}
+            value={
+              form.school
+            }
+            onChange={
+              handleChange
+            }
             placeholder="Например: Школа №1"
             required
-            disabled={isSubmitting}
+            disabled={
+              isSubmitting
+            }
           />
         </label>
 
-        {form.role === 'Ученик' && (
+        {form.role ===
+          'Ученик' && (
           <label className="form-group">
-            <span>Класс</span>
+            <span>
+              Класс
+            </span>
 
             <select
               name="className"
-              value={form.className}
-              onChange={handleChange}
+              value={
+                form.className
+              }
+              onChange={
+                handleChange
+              }
               required
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting
+              }
             >
               <option value="">
                 Выберите класс
+              </option>
+
+              <option value="1 класс">
+                1 класс
+              </option>
+
+              <option value="2 класс">
+                2 класс
+              </option>
+
+              <option value="3 класс">
+                3 класс
+              </option>
+
+              <option value="4 класс">
+                4 класс
+              </option>
+
+              <option value="5 класс">
+                5 класс
               </option>
 
               <option value="6 класс">
@@ -206,37 +346,58 @@ function RegisterPage() {
         )}
 
         <label className="form-group">
-          <span>Пароль</span>
+          <span>
+            Пароль
+          </span>
 
           <input
             type="password"
             name="password"
-            value={form.password}
-            onChange={handleChange}
+            value={
+              form.password
+            }
+            onChange={
+              handleChange
+            }
             required
-            disabled={isSubmitting}
+            minLength={6}
+            disabled={
+              isSubmitting
+            }
+            autoComplete="new-password"
           />
         </label>
 
         <label className="form-group">
-          <span>Повторите пароль</span>
+          <span>
+            Повторите пароль
+          </span>
 
           <input
             type="password"
             name="passwordConfirmation"
             value={
-              form.passwordConfirmation
+              form
+                .passwordConfirmation
             }
-            onChange={handleChange}
+            onChange={
+              handleChange
+            }
             required
-            disabled={isSubmitting}
+            minLength={6}
+            disabled={
+              isSubmitting
+            }
+            autoComplete="new-password"
           />
         </label>
 
         <button
           className="primary-button"
           type="submit"
-          disabled={isSubmitting}
+          disabled={
+            isSubmitting
+          }
         >
           {isSubmitting
             ? 'Создаём аккаунт...'
@@ -245,7 +406,9 @@ function RegisterPage() {
 
         <p className="auth-footer">
           Уже есть аккаунт?{' '}
-          <Link to="/login">Войти</Link>
+          <Link to="/login">
+            Войти
+          </Link>
         </p>
       </form>
     </div>

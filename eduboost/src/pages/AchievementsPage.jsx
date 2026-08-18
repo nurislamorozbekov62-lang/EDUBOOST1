@@ -1,20 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+
 import {
-  Award,
+  BookOpen,
   CheckCircle2,
-  ChevronRight,
-  ClipboardCheck,
+  Crown,
   Flame,
-  Gem,
-  LockKeyhole,
+  Gift,
+  Headphones,
   Medal,
-  Rocket,
-  ShieldCheck,
-  Sparkles,
-  Star,
+  Shirt,
   Target,
+  Ticket,
   Trophy,
-  Zap,
 } from 'lucide-react'
 
 import { useAuth } from '../context/AuthContext'
@@ -31,6 +29,8 @@ import {
   getNextLevel,
 } from '../data/levels'
 
+import './AchievementsPage.css'
+
 function AchievementsPage() {
   const { user } = useAuth()
 
@@ -42,494 +42,373 @@ function AchievementsPage() {
     }
 
     const storedUser = getUsers().find(
-      (item) => item.id === user.id,
+      (item) => item.id === user.id
     )
 
-    if (storedUser) {
-      setFreshUser(storedUser)
-    }
+    setFreshUser(storedUser || user)
   }, [user])
 
-  const xp = Number(freshUser?.xp || 0)
+  const unlockedAchievements = useMemo(() => {
+    return getUnlockedAchievements(
+      freshUser || {}
+    )
+  }, [freshUser])
 
-  const currentLevel = getLevelByXp(xp)
-  const nextLevel = getNextLevel(xp)
-  const progress = getLevelProgress(xp)
-
-  const unlockedAchievements = useMemo(
-    () =>
-      getUnlockedAchievements(
-        freshUser || {},
-      ),
-    [freshUser],
-  )
-
-  const unlockedIds = useMemo(
-    () =>
-      new Set(
-        unlockedAchievements.map(
-          (achievement) => achievement.id,
-        ),
-      ),
-    [unlockedAchievements],
-  )
-
-  const lockedCount =
-    achievements.length -
-    unlockedAchievements.length
-
-  const remainingXp = nextLevel
-    ? Math.max(
-        Number(nextLevel.minXp || 0) -
-          xp,
-        0,
+  const unlockedIds = useMemo(() => {
+    return new Set(
+      unlockedAchievements.map(
+        (achievement) => achievement.id
       )
-    : 0
+    )
+  }, [unlockedAchievements])
+
+  const rankedUsers = useMemo(() => {
+    return getUsers()
+      .filter(
+        (item) =>
+          item.role === 'Ученик' ||
+          item.id === freshUser?.id
+      )
+      .sort(
+        (a, b) =>
+          Number(b.points || 0) -
+          Number(a.points || 0)
+      )
+  }, [freshUser])
 
   if (!freshUser) {
     return null
   }
 
-  return (
-    <div className="achievements-page">
-      <AchievementsHeader />
+  const xp = Number(freshUser.xp || 0)
+  const points = Number(freshUser.points || 0)
 
-      <LevelHero
-        currentLevel={currentLevel}
-        nextLevel={nextLevel}
-        xp={xp}
-        progress={progress}
-        remainingXp={remainingXp}
-      />
+  const currentLevel =
+    getLevelByXp(xp)
 
-      <AchievementStats
-        unlockedCount={
-          unlockedAchievements.length
-        }
-        lockedCount={lockedCount}
-        bestStreak={
-          freshUser.bestStreak || 0
-        }
-        completedTasks={
-          freshUser.completedTasks || 0
-        }
-      />
+  const nextLevel =
+    getNextLevel(xp)
 
-      <AchievementsCollection
-        achievements={achievements}
-        unlockedIds={unlockedIds}
-      />
-    </div>
-  )
-}
-
-function AchievementsHeader() {
-  return (
-    <header className="achievements-header">
-      <div className="achievements-header-icon">
-        <Trophy size={28} />
-      </div>
-
-      <div>
-        <p>Ваши результаты</p>
-
-        <h1>Достижения</h1>
-
-        <span>
-          Повышайте уровень, выполняйте
-          задания и открывайте новые награды.
-        </span>
-      </div>
-    </header>
-  )
-}
-
-function LevelHero({
-  currentLevel,
-  nextLevel,
-  xp,
-  progress,
-  remainingXp,
-}) {
-  const safeProgress = Math.min(
-    Math.max(Number(progress || 0), 0),
-    100,
+  const progress = Math.min(
+    Math.max(
+      Number(getLevelProgress(xp) || 0),
+      0
+    ),
+    100
   )
 
+  const currentPosition =
+    rankedUsers.findIndex(
+      (item) => item.id === freshUser.id
+    ) + 1
+
+  const topUsers =
+    rankedUsers.slice(0, 3)
+
+  const previewAchievements =
+    achievements.slice(0, 4)
+
+  const achievementIcons = [
+    BookOpen,
+    Flame,
+    Target,
+    Crown,
+  ]
+
   return (
-    <section className="achievement-level-hero">
-      <div className="achievement-level-content">
-        <div className="achievement-level-label">
-          <Sparkles size={16} />
-          Текущий уровень
+    <div className="eb-ach-page">
+      <section className="eb-ach-hero">
+        <div className="eb-ach-hero-text">
+          <h1>Мои достижения</h1>
+
+          <p>
+            Учись. Зарабатывай. Достигай!
+          </p>
         </div>
 
-        <div className="achievement-level-main">
-          <div className="achievement-level-icon">
-            <Medal
-              size={34}
-              strokeWidth={2.1}
-            />
-          </div>
-
-          <div>
-            <span>Уровень ученика</span>
-
-            <h2>{currentLevel.name}</h2>
-
-            <p>
-              <Zap size={16} />
-
-              {xp.toLocaleString('ru-RU')}{' '}
-              опыта
-            </p>
-          </div>
+        <div className="eb-ach-hero-art">
+          <Trophy size={72} />
         </div>
+      </section>
 
-        <div className="achievement-level-progress">
-          <div className="achievement-level-progress-heading">
-            <span>
-              Прогресс до следующего уровня
-            </span>
+      <section className="eb-ach-summary">
+        <div className="eb-ach-points">
+          <span className="eb-ach-summary-label">
+            Мои баллы
+          </span>
+
+          <div className="eb-ach-points-value">
+            <div className="eb-ach-coin">
+              ●
+            </div>
 
             <strong>
-              {safeProgress}%
+              {points.toLocaleString(
+                'ru-RU'
+              )}
             </strong>
           </div>
 
-          <div className="achievement-level-progress-track">
+          <small>Баллов</small>
+        </div>
+
+        <div className="eb-ach-level">
+          <div className="eb-ach-level-top">
+            <div className="eb-ach-level-badge">
+              {currentLevel.id}
+            </div>
+
+            <div>
+              <span>Уровень</span>
+
+              <strong>
+                {currentLevel.name}
+              </strong>
+            </div>
+          </div>
+
+          <div className="eb-ach-progress">
             <span
               style={{
-                width: `${safeProgress}%`,
+                width: `${progress}%`,
               }}
             />
           </div>
 
-          <p className="achievement-level-next">
+          <small>
             {nextLevel
-              ? `До уровня «${nextLevel.name}» осталось ${remainingXp.toLocaleString(
-                  'ru-RU',
-                )} опыта`
-              : 'Вы достигли максимального уровня'}
-          </p>
+              ? `${xp.toLocaleString(
+                  'ru-RU'
+                )} / ${Number(
+                  nextLevel.minXp
+                ).toLocaleString(
+                  'ru-RU'
+                )} XP`
+              : 'Максимальный уровень'}
+          </small>
         </div>
-      </div>
+      </section>
 
-      <div className="achievement-level-badge">
-        <ShieldCheck size={36} />
+      <section className="eb-ach-section">
+        <div className="eb-ach-section-header">
+          <h2>Мои достижения</h2>
 
-        <strong>
-          {currentLevel.name}
-        </strong>
-
-        <span>Ваш текущий ранг</span>
-      </div>
-    </section>
-  )
-}
-
-function AchievementStats({
-  unlockedCount,
-  lockedCount,
-  bestStreak,
-  completedTasks,
-}) {
-  const stats = [
-    {
-      label: 'Открыто',
-      value: unlockedCount,
-      icon: Trophy,
-      className:
-        'achievement-stat--gold',
-    },
-    {
-      label: 'Осталось',
-      value: lockedCount,
-      icon: LockKeyhole,
-      className:
-        'achievement-stat--blue',
-    },
-    {
-      label: 'Лучшая серия',
-      value: bestStreak,
-      icon: Flame,
-      className:
-        'achievement-stat--green',
-    },
-    {
-      label: 'Выполнено',
-      value: completedTasks,
-      icon: ClipboardCheck,
-      className:
-        'achievement-stat--purple',
-    },
-  ]
-
-  return (
-    <section className="achievement-stats-grid">
-      {stats.map((stat) => {
-        const Icon = stat.icon
-
-        return (
-          <article
-            className={`achievement-stat-card ${stat.className}`}
-            key={stat.label}
-          >
-            <div className="achievement-stat-icon">
-              <Icon size={21} />
-            </div>
-
-            <div>
-              <strong>{stat.value}</strong>
-              <span>{stat.label}</span>
-            </div>
-          </article>
-        )
-      })}
-    </section>
-  )
-}
-
-function AchievementsCollection({
-  achievements: allAchievements,
-  unlockedIds,
-}) {
-  const unlockedCount =
-    allAchievements.filter(
-      (achievement) =>
-        unlockedIds.has(achievement.id),
-    ).length
-
-  const totalCount =
-    allAchievements.length
-
-  const totalProgress =
-    totalCount > 0
-      ? Math.round(
-          (unlockedCount / totalCount) *
-            100,
-        )
-      : 0
-
-  return (
-    <section className="achievements-collection">
-      <div className="achievements-collection-heading">
-        <div>
-          <p>Коллекция наград</p>
-          <h2>Все достижения</h2>
-        </div>
-
-        <div className="achievements-total-progress">
           <span>
-            {unlockedCount} из {totalCount}
+            {unlockedAchievements.length}{' '}
+            открыто
           </span>
-
-          <strong>
-            {totalProgress}%
-          </strong>
         </div>
-      </div>
 
-      <div className="achievements-total-track">
-        <span
-          style={{
-            width: `${totalProgress}%`,
-          }}
-        />
-      </div>
+        <div className="eb-ach-badges">
+          {previewAchievements.map(
+            (achievement, index) => {
+              const Icon =
+                achievementIcons[index] ||
+                Medal
 
-      {allAchievements.length === 0 ? (
-        <div className="achievement-empty-state">
-          <div>
-            <Award size={30} />
-          </div>
+              const unlocked =
+                unlockedIds.has(
+                  achievement.id
+                )
 
-          <h3>Достижений пока нет</h3>
+              return (
+                <article
+                  key={achievement.id}
+                  className={`eb-ach-badge ${
+                    unlocked
+                      ? ''
+                      : 'eb-ach-badge-locked'
+                  }`}
+                >
+                  <div
+                    className={`eb-ach-badge-icon eb-ach-badge-icon-${index + 1}`}
+                  >
+                    <Icon size={27} />
+                  </div>
 
-          <p>
-            Новые награды появятся здесь.
-          </p>
-        </div>
-      ) : (
-        <div className="modern-achievements-grid">
-          {allAchievements.map(
-            (achievement, index) => (
-              <AchievementCard
-                key={achievement.id}
-                achievement={achievement}
-                unlocked={unlockedIds.has(
-                  achievement.id,
-                )}
-                index={index}
-              />
-            ),
+                  <strong>
+                    {achievement.name}
+                  </strong>
+
+                  <p>
+                    {unlocked
+                      ? 'Получено'
+                      : 'Не открыто'}
+                  </p>
+                </article>
+              )
+            }
           )}
         </div>
-      )}
-    </section>
-  )
-}
+      </section>
 
-function AchievementCard({
-  achievement,
-  unlocked,
-  index,
-}) {
-  const Icon = getAchievementIcon(
-    achievement,
-    index,
-  )
+      <section className="eb-ach-section">
+        <div className="eb-ach-section-header">
+          <h2>Таблица лидеров</h2>
 
-  return (
-    <article
-      className={
-        unlocked
-          ? 'modern-achievement-card modern-achievement-card--unlocked'
-          : 'modern-achievement-card modern-achievement-card--locked'
-      }
-    >
-      <div className="modern-achievement-card-top">
-        <div className="modern-achievement-icon">
-          <Icon
-            size={29}
-            strokeWidth={2.1}
+          <Link to="/ranking">
+            Смотреть все
+          </Link>
+        </div>
+
+        <div className="eb-ach-leaderboard">
+          {topUsers.length > 0 ? (
+            topUsers.map(
+              (student, index) => (
+                <LeaderRow
+                  key={student.id}
+                  student={student}
+                  position={index + 1}
+                  current={
+                    student.id ===
+                    freshUser.id
+                  }
+                />
+              )
+            )
+          ) : (
+            <LeaderRow
+              student={freshUser}
+              position={1}
+              current
+            />
+          )}
+
+          {currentPosition > 3 && (
+            <LeaderRow
+              student={freshUser}
+              position={currentPosition}
+              current
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="eb-ach-section">
+        <div className="eb-ach-section-header">
+          <h2>
+            Обменяй баллы на подарки
+          </h2>
+
+          <Link to="/store">
+            Все награды
+          </Link>
+        </div>
+
+        <div className="eb-ach-rewards">
+          <RewardCard
+            icon={Gift}
+            title="Скидка 10%"
+            points={500}
+          />
+
+          <RewardCard
+            icon={Ticket}
+            title="Билет в кино"
+            points={800}
+          />
+
+          <RewardCard
+            icon={Headphones}
+            title="Наушники"
+            points={2500}
+          />
+
+          <RewardCard
+            icon={Shirt}
+            title="Мерч EduBoost"
+            points={3000}
           />
         </div>
-
-        <AchievementState
-          unlocked={unlocked}
-        />
-      </div>
-
-      <div className="modern-achievement-card-content">
-        <span className="modern-achievement-category">
-          {unlocked
-            ? 'Полученная награда'
-            : 'Новая цель'}
-        </span>
-
-        <h3>{achievement.name}</h3>
-
-        <p>
-          {achievement.description}
-        </p>
-      </div>
-
-      <div className="modern-achievement-card-footer">
-        <div>
-          {unlocked ? (
-            <CheckCircle2 size={18} />
-          ) : (
-            <Target size={18} />
-          )}
-
-          <span>
-            {unlocked
-              ? 'Достижение открыто'
-              : 'Продолжайте обучение'}
-          </span>
-        </div>
-
-        <ChevronRight size={18} />
-      </div>
-
-      {!unlocked && (
-        <div className="modern-achievement-lock">
-          <LockKeyhole size={20} />
-        </div>
-      )}
-    </article>
+      </section>
+    </div>
   )
 }
 
-function AchievementState({
-  unlocked,
+function LeaderRow({
+  student,
+  position,
+  current = false,
+}) {
+  const medal =
+    position === 1
+      ? '🥇'
+      : position === 2
+        ? '🥈'
+        : position === 3
+          ? '🥉'
+          : position
+
+  return (
+    <div
+      className={`eb-ach-leader ${
+        current
+          ? 'eb-ach-leader-current'
+          : ''
+      }`}
+    >
+      <div className="eb-ach-rank">
+        {medal}
+      </div>
+
+      <div className="eb-ach-avatar">
+        {(student.name || 'U')
+          .charAt(0)
+          .toUpperCase()}
+      </div>
+
+      <div className="eb-ach-leader-info">
+        <strong>
+          {current
+            ? 'Вы'
+            : student.name ||
+              'Ученик'}
+        </strong>
+
+        <span>
+          {Number(
+            student.points || 0
+          ).toLocaleString(
+            'ru-RU'
+          )}{' '}
+          баллов
+        </span>
+      </div>
+
+      {current && (
+        <CheckCircle2
+          size={18}
+          color="#0867ed"
+        />
+      )}
+    </div>
+  )
+}
+
+function RewardCard({
+  icon: Icon,
+  title,
+  points,
 }) {
   return (
-    <span
-      className={
-        unlocked
-          ? 'achievement-state-badge achievement-state-badge--unlocked'
-          : 'achievement-state-badge achievement-state-badge--locked'
-      }
+    <Link
+      to="/store"
+      className="eb-ach-reward"
     >
-      {unlocked ? (
-        <>
-          <ShieldCheck size={14} />
-          Открыто
-        </>
-      ) : (
-        <>
-          <LockKeyhole size={14} />
-          Закрыто
-        </>
-      )}
-    </span>
+      <div className="eb-ach-reward-icon">
+        <Icon size={25} />
+      </div>
+
+      <strong>{title}</strong>
+
+      <span>
+        ●{' '}
+        {points.toLocaleString(
+          'ru-RU'
+        )}
+      </span>
+    </Link>
   )
-}
-
-function getAchievementIcon(
-  achievement,
-  index,
-) {
-  const text = `${achievement.name || ''} ${
-    achievement.description || ''
-  }`.toLowerCase()
-
-  if (
-    text.includes('серия') ||
-    text.includes('день')
-  ) {
-    return Flame
-  }
-
-  if (
-    text.includes('задани') ||
-    text.includes('работ')
-  ) {
-    return ClipboardCheck
-  }
-
-  if (
-    text.includes('опыт') ||
-    text.includes('уров')
-  ) {
-    return Zap
-  }
-
-  if (
-    text.includes('перв') ||
-    text.includes('старт')
-  ) {
-    return Rocket
-  }
-
-  if (
-    text.includes('балл') ||
-    text.includes('очк')
-  ) {
-    return Gem
-  }
-
-  if (
-    text.includes('лучш') ||
-    text.includes('побед')
-  ) {
-    return Trophy
-  }
-
-  const icons = [
-    Star,
-    Trophy,
-    Flame,
-    Target,
-    Medal,
-    Award,
-    Rocket,
-    Gem,
-  ]
-
-  return icons[index % icons.length]
 }
 
 export default AchievementsPage

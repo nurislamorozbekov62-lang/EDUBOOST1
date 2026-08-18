@@ -11,6 +11,7 @@ import {
 import {
   AlertTriangle,
   Award,
+  BarChart3,
   Bell,
   BookOpenCheck,
   CalendarDays,
@@ -74,72 +75,60 @@ function ParentDashboardPage() {
     user,
   } = useAuth()
 
-
   const [
     students,
     setStudents,
   ] = useState([])
-
 
   const [
     selectedStudentId,
     setSelectedStudentId,
   ] = useState('')
 
-
   const [
     studentCode,
     setStudentCode,
   ] = useState('')
-
 
   const [
     pageError,
     setPageError,
   ] = useState('')
 
-
   const [
     refreshKey,
     setRefreshKey,
   ] = useState(0)
-
 
   const [
     grades,
     setGrades,
   ] = useState([])
 
-
   const [
     attendanceRecords,
     setAttendanceRecords,
   ] = useState([])
-
 
   const [
     academicLoading,
     setAcademicLoading,
   ] = useState(false)
 
-
   const [
     academicError,
     setAcademicError,
   ] = useState('')
-
 
   const [
     menuOpen,
     setMenuOpen,
   ] = useState(false)
 
-
   const [
     rewardsOpen,
     setRewardsOpen,
   ] = useState(false)
-
 
   const [
     rewardForm,
@@ -149,7 +138,6 @@ function ParentDashboardPage() {
     description: '',
     requiredPoints: 500,
   })
-
 
   const [
     selectedDay,
@@ -760,7 +748,7 @@ function ParentDashboardPage() {
     },
     {
       title:
-        'Успеваемость',
+        'Оценки',
       icon:
         GraduationCap,
       to:
@@ -768,11 +756,27 @@ function ParentDashboardPage() {
     },
     {
       title:
+        'Четвертные оценки',
+      icon:
+        BarChart3,
+      to:
+        '/quarter-grades',
+    },
+    {
+      title:
+        'Посещаемость',
+      icon:
+        CheckCircle2,
+      to:
+  '/attendance',
+    },
+    {
+      title:
         'Задания',
       icon:
         BookOpenCheck,
       to:
-        '/tasks',
+        '/parent-tasks',
     },
     {
       title:
@@ -840,6 +844,30 @@ function ParentDashboardPage() {
 
     {
       title:
+        'Четвертные оценки',
+
+      subtitle:
+        'Итоги по предметам за весь учебный год',
+
+      icon:
+        BarChart3,
+
+      to:
+        '/quarter-grades',
+
+      tone:
+        'quarter',
+
+      quarters: [
+        'I',
+        'II',
+        'III',
+        'IV',
+      ],
+    },
+
+    {
+      title:
         'Посещаемость',
 
       subtitle:
@@ -868,7 +896,7 @@ function ParentDashboardPage() {
         BookOpenCheck,
 
       to:
-        '/tasks',
+        '/parent-tasks',
 
       tone:
         'orange',
@@ -1342,6 +1370,29 @@ function ParentDashboardPage() {
                             item.subtitle
                           }
                         </span>
+
+
+                        {item.quarters && (
+                          <div className="parent-quarter-preview">
+
+                            {item.quarters.map(
+                              (
+                                quarter,
+                              ) => (
+                                <small
+                                  key={
+                                    quarter
+                                  }
+                                >
+                                  {
+                                    quarter
+                                  }
+                                </small>
+                              ),
+                            )}
+
+                          </div>
+                        )}
 
                       </div>
 
@@ -3133,6 +3184,112 @@ function ParentDiaryStyles() {
         color: #cbd5e1;
       }
 
+      .parent-diary-tile.quarter {
+        grid-column: 1 / -1;
+        min-height: 104px;
+        border-color: #c7d2fe;
+        background:
+          radial-gradient(
+            circle at 92% 8%,
+            rgba(
+              99,
+              102,
+              241,
+              0.14
+            ),
+            transparent 34%
+          ),
+          linear-gradient(
+            135deg,
+            #ffffff 0%,
+            #f5f7ff 58%,
+            #eef2ff 100%
+          );
+        box-shadow:
+          0 8px 24px
+          rgba(
+            79,
+            70,
+            229,
+            0.10
+          );
+      }
+
+      .parent-diary-tile.quarter:hover {
+        border-color: #818cf8;
+        transform:
+          translateY(-2px);
+      }
+
+      .parent-diary-tile.quarter
+      .parent-diary-tile-icon {
+        width: 56px;
+        height: 56px;
+        flex: 0 0 56px;
+        background:
+          linear-gradient(
+            145deg,
+            #4f46e5,
+            #2563eb
+          );
+        color: #ffffff;
+        box-shadow:
+          0 8px 18px
+          rgba(
+            79,
+            70,
+            229,
+            0.22
+          );
+      }
+
+      .parent-diary-tile.quarter strong {
+        color: #312e81;
+        font-size: 15px;
+      }
+
+      .parent-diary-tile.quarter
+      > div:nth-child(2)
+      > span {
+        max-width: 420px;
+        color: #64748b;
+        font-size: 11px;
+        white-space: normal;
+      }
+
+      .parent-diary-tile.quarter > svg {
+        color: #6366f1;
+      }
+
+      .parent-quarter-preview {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .parent-quarter-preview small {
+        width: 28px;
+        height: 25px;
+        display: grid;
+        place-items: center;
+        border:
+          1px solid
+          #c7d2fe;
+        border-radius: 8px;
+        background:
+          rgba(
+            255,
+            255,
+            255,
+            0.82
+          );
+        color: #4f46e5;
+        font-size: 9px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
       .parent-diary-tile.blue
       .parent-diary-tile-icon {
         background: #eff6ff;
@@ -4089,6 +4246,23 @@ function ParentDiaryStyles() {
           right: 12px;
           bottom: 12px;
         }
+
+        .parent-diary-tile.quarter {
+          grid-column: 1 / -1;
+          min-height: 104px;
+          flex-direction: row;
+          align-items: center;
+        }
+
+        .parent-diary-tile.quarter
+        > div:nth-child(2) {
+          width: auto;
+        }
+
+        .parent-diary-tile.quarter > svg {
+          position: static;
+          margin-left: auto;
+        }
       }
 
       @media (
@@ -4224,6 +4398,33 @@ function ParentDiaryStyles() {
 
         .parent-diary-tile span {
           font-size: 9px;
+        }
+
+        .parent-diary-tile.quarter {
+          min-height: 100px;
+        }
+
+        .parent-diary-tile.quarter
+        .parent-diary-tile-icon {
+          width: 48px;
+          height: 48px;
+          flex-basis: 48px;
+        }
+
+        .parent-diary-tile.quarter strong {
+          font-size: 13px;
+        }
+
+        .parent-quarter-preview {
+          gap: 4px;
+          margin-top: 7px;
+        }
+
+        .parent-quarter-preview small {
+          width: 25px;
+          height: 23px;
+          border-radius: 7px;
+          font-size: 8px;
         }
 
         .parent-info-card {

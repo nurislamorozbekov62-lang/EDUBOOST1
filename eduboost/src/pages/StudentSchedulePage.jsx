@@ -33,8 +33,25 @@ import {
   getTodayName,
 } from '../services/supabaseScheduleService'
 
+import {
+  getSupabaseJournalLessonBySchedule,
+} from '../services/supabaseJournalLessonService'
 
-const days = [
+import {
+  getSupabaseTasksForJournalLesson,
+} from '../services/supabaseTaskService'
+
+import {
+  getSupabaseStudentGrades,
+} from '../services/supabaseJournalService'
+
+import {
+  getAttendanceStatusLabel,
+  getSupabaseStudentAttendance,
+} from '../services/supabaseAttendanceService'
+
+
+const DAYS = [
   'Понедельник',
   'Вторник',
   'Среда',
@@ -44,8 +61,15 @@ const days = [
 ]
 
 
+/* =========================================================
+   PAGE
+========================================================= */
+
 function StudentSchedulePage() {
-  const { user } = useAuth()
+  const {
+    user,
+  } = useAuth()
+
 
   const [
     schedule,
@@ -63,48 +87,112 @@ function StudentSchedulePage() {
   ] = useState('')
 
 
+  /* =======================================================
+     LESSON PREVIEW
+  ======================================================= */
+
+  const [
+    lessonPreview,
+    setLessonPreview,
+  ] = useState(null)
+
+  const [
+    lessonPreviewLoading,
+    setLessonPreviewLoading,
+  ] = useState(false)
+
+  const [
+    lessonPreviewError,
+    setLessonPreviewError,
+  ] = useState('')
+
+
+  /* =======================================================
+     PARENT CHILDREN
+  ======================================================= */
+
   const linkedStudents =
-    useMemo(
-      () =>
-        user?.role ===
+    useMemo(() => {
+      if (
+        user?.role !==
         'Родитель'
-          ? getLinkedStudents(
-              user.id,
-            )
-          : [],
-      [
-        user,
-      ],
-    )
+      ) {
+        return []
+      }
+
+
+      return (
+        getLinkedStudents(
+          user.id,
+        ) || []
+      )
+    }, [
+      user?.id,
+      user?.role,
+    ])
 
 
   const [
     selectedStudentId,
     setSelectedStudentId,
-  ] = useState(
-    linkedStudents[0]?.id ||
-      '',
-  )
+  ] = useState('')
 
 
   useEffect(() => {
     if (
-      user?.role ===
-        'Родитель' &&
-      linkedStudents.length >
-        0 &&
-      !selectedStudentId
+      user?.role !==
+      'Родитель'
     ) {
-      setSelectedStudentId(
-        linkedStudents[0].id,
-      )
+      return
     }
+
+
+    if (
+      linkedStudents.length ===
+      0
+    ) {
+      setSelectedStudentId('')
+
+      return
+    }
+
+
+    setSelectedStudentId(
+      (current) => {
+        const exists =
+          linkedStudents.some(
+            (item) =>
+              String(
+                item.id,
+              ) ===
+              String(
+                current,
+              ),
+          )
+
+
+        if (
+          exists
+        ) {
+          return current
+        }
+
+
+        return (
+          linkedStudents[0]?.id ||
+          ''
+        )
+      },
+    )
   }, [
     user?.role,
     linkedStudents,
-    selectedStudentId,
   ])
 
+
+  /* =======================================================
+     ACTIVE STUDENT
+  ======================================================= */
 
   const student =
     user?.role ===
@@ -112,10 +200,19 @@ function StudentSchedulePage() {
       ? user
       : linkedStudents.find(
           (item) =>
-            item.id ===
-            selectedStudentId,
-        )
+            String(
+              item.id,
+            ) ===
+            String(
+              selectedStudentId,
+            ),
+        ) ||
+        null
 
+
+  /* =======================================================
+     DAYS
+  ======================================================= */
 
   const today =
     getTodayName()
@@ -125,47 +222,73 @@ function StudentSchedulePage() {
     selectedDay,
     setSelectedDay,
   ] = useState(
-    days.includes(today)
+    DAYS.includes(
+      today,
+    )
       ? today
       : 'Понедельник',
   )
 
+
+  /* =======================================================
+     LOAD SCHEDULE
+  ======================================================= */
 
   useEffect(() => {
     void loadSchedule()
   }, [
     student?.id,
     student?.school,
+    student?.schoolId,
     student?.className,
     student?.class_name,
   ])
 
 
   async function loadSchedule() {
-    if (!student) {
+    if (
+      !student
+    ) {
       setSchedule([])
       setLoading(false)
+
       return
     }
+
 
     try {
       setLoading(true)
       setScheduleError('')
+
 
       const lessons =
         await getScheduleForStudent(
           student,
         )
 
+
       setSchedule(
-        lessons || [],
+        Array.isArray(
+          lessons,
+        )
+          ? lessons
+          : [],
       )
-    } catch (error) {
+    } catch (
+      error
+    ) {
+      console.error(
+        'Student schedule:',
+        error,
+      )
+
+
       setSchedule([])
 
+
       setScheduleError(
-        error.message ||
-          'Не удалось загрузить расписание',
+        error?.message ||
+          'Не удалось загрузить расписание.',
       )
     } finally {
       setLoading(false)
@@ -173,27 +296,65 @@ function StudentSchedulePage() {
   }
 
 
+  /* =======================================================
+     SELECTED DAY LESSONS
+  ======================================================= */
+
   const selectedDayLessons =
-    schedule
-      .filter(
-        (lesson) =>
-          lesson.day ===
-          selectedDay,
-      )
-      .sort(
-        (
-          firstLesson,
-          secondLesson,
-        ) =>
-          Number(
-            firstLesson.lessonNumber ||
-              0,
-          ) -
-          Number(
-            secondLesson.lessonNumber ||
-              0,
+    useMemo(
+      () =>
+        schedule
+          .filter(
+            (lesson) =>
+              lesson.day ===
+              selectedDay,
+          )
+          .sort(
+            (
+              first,
+              second,
+            ) => {
+              const firstNumber =
+                Number(
+                  first.lessonNumber ||
+                    0,
+                )
+
+
+              const secondNumber =
+                Number(
+                  second.lessonNumber ||
+                    0,
+                )
+
+
+              if (
+                firstNumber !==
+                secondNumber
+              ) {
+                return (
+                  firstNumber -
+                  secondNumber
+                )
+              }
+
+
+              return String(
+                first.startTime ||
+                  '',
+              ).localeCompare(
+                String(
+                  second.startTime ||
+                    '',
+                ),
+              )
+            },
           ),
-      )
+      [
+        schedule,
+        selectedDay,
+      ],
+    )
 
 
   const nextLesson =
@@ -205,44 +366,349 @@ function StudentSchedulePage() {
   const todayLessonsCount =
     schedule.filter(
       (lesson) =>
-        lesson.day === today,
+        lesson.day ===
+        today,
     ).length
 
 
-  function selectPreviousDay() {
-    const currentIndex =
-      days.indexOf(
+  /* =======================================================
+     OPEN LESSON
+  ======================================================= */
+
+  async function handleOpenLesson(
+    scheduleLesson,
+  ) {
+    if (
+      !student?.id ||
+      !scheduleLesson?.id
+    ) {
+      return
+    }
+
+
+    const lessonDate =
+      getDateForDay(
         selectedDay,
       )
 
+
+    setLessonPreview({
+      scheduleLesson,
+
+      lessonDate,
+
+      journalLesson:
+        null,
+
+      tasks:
+        [],
+
+      grades:
+        [],
+
+      attendance:
+        null,
+    })
+
+
+    setLessonPreviewLoading(
+      true,
+    )
+
+    setLessonPreviewError(
+      '',
+    )
+
+
+    try {
+      const journalLesson =
+        await getSupabaseJournalLessonBySchedule({
+          scheduleLessonId:
+            scheduleLesson.id,
+
+          date:
+            lessonDate,
+        })
+
+
+      /*
+        Расписание существует,
+        но учитель ещё не создал
+        фактическую карточку урока.
+      */
+
+      if (
+        !journalLesson
+      ) {
+        setLessonPreview({
+          scheduleLesson,
+
+          lessonDate,
+
+          journalLesson:
+            null,
+
+          tasks:
+            [],
+
+          grades:
+            [],
+
+          attendance:
+            null,
+        })
+
+        return
+      }
+
+
+      const [
+        tasksResult,
+        gradesResult,
+        attendanceResult,
+      ] =
+        await Promise.allSettled([
+          getSupabaseTasksForJournalLesson(
+            journalLesson.id,
+          ),
+
+          getSupabaseStudentGrades(
+            student.id,
+          ),
+
+          getSupabaseStudentAttendance(
+            student.id,
+          ),
+        ])
+
+
+      /* ===============================
+         TASKS
+      =============================== */
+
+      const tasks =
+        tasksResult.status ===
+          'fulfilled' &&
+        Array.isArray(
+          tasksResult.value,
+        )
+          ? tasksResult.value
+          : []
+
+
+      /* ===============================
+         GRADES
+      =============================== */
+
+      const allGrades =
+        gradesResult.status ===
+          'fulfilled' &&
+        Array.isArray(
+          gradesResult.value,
+        )
+          ? gradesResult.value
+          : []
+
+
+      const lessonGrades =
+        allGrades.filter(
+          (grade) =>
+            String(
+              grade.journalLessonId ||
+                '',
+            ) ===
+            String(
+              journalLesson.id,
+            ),
+        )
+
+
+      /* ===============================
+         ATTENDANCE
+      =============================== */
+
+      const allAttendance =
+        attendanceResult.status ===
+          'fulfilled' &&
+        Array.isArray(
+          attendanceResult.value,
+        )
+          ? attendanceResult.value
+          : []
+
+
+      const attendance =
+        allAttendance.find(
+          (record) =>
+            String(
+              record.journalLessonId ||
+                '',
+            ) ===
+            String(
+              journalLesson.id,
+            ),
+        ) ||
+        null
+
+
+      setLessonPreview({
+        scheduleLesson,
+
+        lessonDate,
+
+        journalLesson,
+
+        tasks,
+
+        grades:
+          lessonGrades,
+
+        attendance,
+      })
+
+
+      /* ===============================
+         PARTIAL LOAD ERRORS
+      =============================== */
+
+      const failedParts =
+        []
+
+
+      if (
+        tasksResult.status ===
+        'rejected'
+      ) {
+        failedParts.push(
+          'домашнее задание',
+        )
+
+        console.error(
+          tasksResult.reason,
+        )
+      }
+
+
+      if (
+        gradesResult.status ===
+        'rejected'
+      ) {
+        failedParts.push(
+          'оценки',
+        )
+
+        console.error(
+          gradesResult.reason,
+        )
+      }
+
+
+      if (
+        attendanceResult.status ===
+        'rejected'
+      ) {
+        failedParts.push(
+          'посещаемость',
+        )
+
+        console.error(
+          attendanceResult.reason,
+        )
+      }
+
+
+      if (
+        failedParts.length >
+        0
+      ) {
+        setLessonPreviewError(
+          `Не удалось загрузить часть данных: ${failedParts.join(
+            ', ',
+          )}.`,
+        )
+      }
+    } catch (
+      error
+    ) {
+      console.error(
+        'School lesson preview:',
+        error,
+      )
+
+
+      setLessonPreviewError(
+        error?.message ||
+          'Не удалось открыть урок.',
+      )
+    } finally {
+      setLessonPreviewLoading(
+        false,
+      )
+    }
+  }
+
+
+  function closeLessonPreview() {
+    setLessonPreview(
+      null,
+    )
+
+    setLessonPreviewError(
+      '',
+    )
+  }
+
+
+  /* =======================================================
+     PREVIOUS / NEXT DAY
+  ======================================================= */
+
+  function selectPreviousDay() {
+    const currentIndex =
+      DAYS.indexOf(
+        selectedDay,
+      )
+
+
     const previousIndex =
       currentIndex <= 0
-        ? days.length - 1
+        ? DAYS.length - 1
         : currentIndex - 1
 
+
     setSelectedDay(
-      days[previousIndex],
+      DAYS[
+        previousIndex
+      ],
     )
   }
 
 
   function selectNextDay() {
     const currentIndex =
-      days.indexOf(
+      DAYS.indexOf(
         selectedDay,
       )
 
+
     const nextIndex =
       currentIndex >=
-      days.length - 1
+      DAYS.length - 1
         ? 0
         : currentIndex + 1
 
+
     setSelectedDay(
-      days[nextIndex],
+      DAYS[
+        nextIndex
+      ],
     )
   }
 
+
+  /* =======================================================
+     ACCESS
+  ======================================================= */
 
   if (
     user?.role !==
@@ -251,8 +717,9 @@ function StudentSchedulePage() {
       'Родитель'
   ) {
     return (
-      <div className="schedule-page">
-
+      <div
+        className="schedule-page"
+      >
         <ScheduleEmptyState
           icon={
             CalendarDays
@@ -260,27 +727,21 @@ function StudentSchedulePage() {
           title="Доступ запрещён"
           text="Эта страница доступна ученикам и родителям."
         />
-
       </div>
     )
   }
 
 
-  /*
-   * Новый интерфейс
-   * ТОЛЬКО для родителя.
-   *
-   * Ученический вариант
-   * ниже остаётся прежним.
-   */
+  /* =======================================================
+     PARENT
+  ======================================================= */
+
   if (
     user.role ===
     'Родитель'
   ) {
     return (
       <>
-        <ParentScheduleStyles />
-
         <ParentScheduleView
           student={
             student
@@ -315,55 +776,48 @@ function StudentSchedulePage() {
           today={
             today
           }
-          nextLesson={
-            nextLesson
-          }
           reload={
             loadSchedule
           }
+          onOpenLesson={
+            handleOpenLesson
+          }
         />
+
+
+        {lessonPreview && (
+          <SchoolLessonPreviewModal
+            preview={
+              lessonPreview
+            }
+            loading={
+              lessonPreviewLoading
+            }
+            error={
+              lessonPreviewError
+            }
+            mode="parent"
+            onClose={
+              closeLessonPreview
+            }
+          />
+        )}
       </>
     )
   }
 
 
-  /*
-   * Ниже оставляем
-   * ученический интерфейс.
-   */
+  /* =======================================================
+     STUDENT EMPTY
+  ======================================================= */
 
-  if (!student) {
+  if (
+    !student
+  ) {
     return (
-      <div className="schedule-page">
-
-        <header className="schedule-page-header">
-
-          <div className="schedule-page-header-icon">
-            <CalendarDays
-              size={27}
-            />
-          </div>
-
-          <div>
-
-            <p>
-              Учебный процесс
-            </p>
-
-            <h1>
-              Расписание
-            </h1>
-
-            <span>
-              Расписание пока
-              недоступно.
-            </span>
-
-          </div>
-
-        </header>
-
-
+      <div
+        className="schedule-page"
+      >
         <ScheduleEmptyState
           icon={
             UserRound
@@ -371,16 +825,18 @@ function StudentSchedulePage() {
           title="Профиль не найден"
           text="Не удалось определить ученика."
         />
-
       </div>
     )
   }
 
 
-  if (loading) {
+  if (
+    loading
+  ) {
     return (
-      <div className="schedule-page">
-
+      <div
+        className="schedule-page"
+      >
         <ScheduleEmptyState
           icon={
             CalendarDays
@@ -388,16 +844,18 @@ function StudentSchedulePage() {
           title="Загрузка расписания"
           text="Получаем уроки из Supabase..."
         />
-
       </div>
     )
   }
 
 
-  if (scheduleError) {
+  if (
+    scheduleError
+  ) {
     return (
-      <div className="schedule-page">
-
+      <div
+        className="schedule-page"
+      >
         <ScheduleEmptyState
           icon={
             CalendarDays
@@ -407,513 +865,578 @@ function StudentSchedulePage() {
             scheduleError
           }
         />
-
       </div>
     )
   }
 
 
+  /* =======================================================
+     STUDENT
+  ======================================================= */
+
   return (
-    <div className="schedule-page">
+    <>
+      <div
+        className="schedule-page"
+      >
 
-      <header className="schedule-page-header">
+        {/* ===============================================
+            HEADER
+        =============================================== */}
 
-        <div className="schedule-page-header-icon">
-          <CalendarDays
-            size={27}
-          />
-        </div>
+        <header
+          className="schedule-page-header"
+        >
 
-
-        <div className="schedule-page-header-content">
-
-          <p>
-            Учебный процесс
-          </p>
-
-          <h1>
-            Моё расписание
-          </h1>
-
-
-          <div className="schedule-student-meta">
-
-            <span>
-              <School
-                size={15}
-              />
-
-              {student.school ||
-                'Школа не указана'}
-            </span>
-
-
-            <span>
-              <GraduationCap
-                size={15}
-              />
-
-              {getStudentClass(
-                student,
-              ) ||
-                'Класс не указан'}
-            </span>
-
-          </div>
-
-        </div>
-
-      </header>
-
-
-      <section className="schedule-next-lesson-card">
-
-        <div className="schedule-next-lesson-content">
-
-          <div className="schedule-next-lesson-label">
-
-            <Sparkles
-              size={16}
+          <div
+            className="schedule-page-header-icon"
+          >
+            <CalendarDays
+              size={27}
             />
-
-            Сегодня, {
-              today
-            }
-
           </div>
 
 
-          <h2>
+          <div
+            className="schedule-page-header-content"
+          >
 
-            {nextLesson
-              ? nextLesson.subject
-              : 'Уроков больше нет'}
+            <p>
+              Учебный процесс
+            </p>
 
-          </h2>
-
-
-          {nextLesson ? (
-            <>
-
-              <p>
-                Следующий урок
-                начинается в{' '}
-
-                <strong>
-                  {
-                    nextLesson.startTime
-                  }
-                </strong>
-              </p>
+            <h1>
+              Моё расписание
+            </h1>
 
 
-              <div className="schedule-next-meta">
+            <div
+              className="schedule-student-meta"
+            >
 
-                <span>
+              <span>
+                <School
+                  size={15}
+                />
 
-                  <Clock3
-                    size={16}
-                  />
-
-                  {
-                    nextLesson.startTime
-                  }
-                  –
-                  {
-                    nextLesson.endTime
-                  }
-
-                </span>
+                {student.school ||
+                  'Школа не указана'}
+              </span>
 
 
-                <span>
+              <span>
+                <GraduationCap
+                  size={15}
+                />
 
-                  <BookOpen
-                    size={16}
-                  />
+                {getStudentClass(
+                  student,
+                ) ||
+                  'Класс не указан'}
+              </span>
 
-                  Урок №
-                  {
-                    nextLesson.lessonNumber
-                  }
+            </div>
 
-                </span>
+          </div>
+
+        </header>
 
 
-                {nextLesson.classroom && (
+        {/* ===============================================
+            NEXT LESSON
+        =============================================== */}
+
+        <section
+          className="schedule-next-lesson-card"
+        >
+
+          <div
+            className="schedule-next-lesson-content"
+          >
+
+            <div
+              className="schedule-next-lesson-label"
+            >
+
+              <Sparkles
+                size={16}
+              />
+
+              Сегодня, {today}
+
+            </div>
+
+
+            <h2>
+              {nextLesson
+                ? nextLesson.subject
+                : 'Уроков больше нет'}
+            </h2>
+
+
+            {nextLesson ? (
+              <>
+                <p>
+                  Следующий урок
+                  начинается в{' '}
+
+                  <strong>
+                    {nextLesson.startTime}
+                  </strong>
+                </p>
+
+
+                <div
+                  className="schedule-next-meta"
+                >
+
                   <span>
-
-                    <DoorOpen
+                    <Clock3
                       size={16}
                     />
 
-                    Кабинет{' '}
-                    {
-                      nextLesson.classroom
-                    }
-
+                    {nextLesson.startTime}
+                    {' – '}
+                    {nextLesson.endTime}
                   </span>
-                )}
-
-              </div>
-
-            </>
-          ) : (
-            <p>
-              На сегодня ближайших
-              уроков нет.
-            </p>
-          )}
-
-        </div>
 
 
-        <div className="schedule-next-lesson-badge">
+                  <span>
+                    <BookOpen
+                      size={16}
+                    />
 
-          <span>
-            {
-              todayLessonsCount
-            }
-          </span>
-
-          <small>
-            уроков сегодня
-          </small>
-
-        </div>
-
-      </section>
+                    Урок №
+                    {nextLesson.lessonNumber}
+                  </span>
 
 
-      <section className="schedule-days-panel">
+                  {nextLesson.classroom && (
+                    <span>
+                      <DoorOpen
+                        size={16}
+                      />
 
-        <button
-          type="button"
-          className="schedule-arrow-button"
-          onClick={
-            selectPreviousDay
-          }
-          aria-label="Предыдущий день"
-        >
-          <ChevronLeft
-            size={20}
-          />
-        </button>
+                      Кабинет{' '}
+                      {nextLesson.classroom}
+                    </span>
+                  )}
 
-
-        <div className="modern-schedule-day-tabs">
-
-          {days.map(
-            (day) => (
-              <button
-                type="button"
-                key={
-                  day
-                }
-                className={
-                  selectedDay ===
-                  day
-                    ? 'modern-schedule-day-button modern-schedule-day-button--active'
-                    : day ===
-                        today
-                      ? 'modern-schedule-day-button modern-schedule-day-button--today'
-                      : 'modern-schedule-day-button'
-                }
-                onClick={() =>
-                  setSelectedDay(
-                    day,
-                  )
-                }
-              >
-
-                <span>
-                  {
-                    getShortDay(
-                      day,
-                    )
-                  }
-                </span>
-
-
-                <small>
-
-                  {day ===
-                  today
-                    ? 'Сегодня'
-                    : day.slice(
-                        0,
-                        3,
-                      )}
-
-                </small>
-
-              </button>
-            ),
-          )}
-
-        </div>
-
-
-        <button
-          type="button"
-          className="schedule-arrow-button"
-          onClick={
-            selectNextDay
-          }
-          aria-label="Следующий день"
-        >
-          <ChevronRight
-            size={20}
-          />
-        </button>
-
-      </section>
-
-
-      <section className="modern-schedule-section">
-
-        <div className="modern-schedule-section-heading">
-
-          <div>
-
-            <p>
-              Учебный день
-            </p>
-
-            <h2>
-              {
-                selectedDay
-              }
-            </h2>
+                </div>
+              </>
+            ) : (
+              <p>
+                На сегодня ближайших
+                уроков нет.
+              </p>
+            )}
 
           </div>
 
 
-          <span>
+          <div
+            className="schedule-next-lesson-badge"
+          >
 
-            {
-              selectedDayLessons.length
-            }{' '}
+            <span>
+              {todayLessonsCount}
+            </span>
 
-            {getLessonWord(
-              selectedDayLessons.length,
+            <small>
+              уроков сегодня
+            </small>
+
+          </div>
+
+        </section>
+
+
+        {/* ===============================================
+            DAYS
+        =============================================== */}
+
+        <section
+          className="schedule-days-panel"
+        >
+
+          <button
+            type="button"
+            className="schedule-arrow-button"
+            onClick={
+              selectPreviousDay
+            }
+            aria-label="Предыдущий день"
+          >
+            <ChevronLeft
+              size={20}
+            />
+          </button>
+
+
+          <div
+            className="modern-schedule-day-tabs"
+          >
+
+            {DAYS.map(
+              (day) => (
+                <button
+                  type="button"
+                  key={
+                    day
+                  }
+                  className={
+                    selectedDay ===
+                    day
+                      ? 'modern-schedule-day-button modern-schedule-day-button--active'
+                      : day ===
+                          today
+                        ? 'modern-schedule-day-button modern-schedule-day-button--today'
+                        : 'modern-schedule-day-button'
+                  }
+                  onClick={() =>
+                    setSelectedDay(
+                      day,
+                    )
+                  }
+                >
+
+                  <span>
+                    {getShortDay(
+                      day,
+                    )}
+                  </span>
+
+
+                  <small>
+                    {day ===
+                    today
+                      ? 'Сегодня'
+                      : day.slice(
+                          0,
+                          3,
+                        )}
+                  </small>
+
+                </button>
+              ),
             )}
 
-          </span>
-
-        </div>
+          </div>
 
 
-        {selectedDayLessons.length ===
-        0 ? (
-          <ScheduleEmptyState
-            icon={
-              Sparkles
+          <button
+            type="button"
+            className="schedule-arrow-button"
+            onClick={
+              selectNextDay
             }
-            title="Уроков нет"
-            text="На этот день расписание пока не добавлено."
-          />
-        ) : (
-          <div className="modern-schedule-list">
+            aria-label="Следующий день"
+          >
+            <ChevronRight
+              size={20}
+            />
+          </button>
 
-            {selectedDayLessons.map(
-              (
-                lesson,
-                index,
-              ) => {
-                const isCurrentLesson =
-                  selectedDay ===
-                    today &&
-                  nextLesson?.id ===
-                    lesson.id
+        </section>
 
-                return (
-                  <article
-                    className={
-                      isCurrentLesson
-                        ? 'modern-schedule-card modern-schedule-card--current'
-                        : 'modern-schedule-card'
-                    }
-                    key={
+
+        {/* ===============================================
+            LESSONS
+        =============================================== */}
+
+        <section
+          className="modern-schedule-section"
+        >
+
+          <div
+            className="modern-schedule-section-heading"
+          >
+
+            <div>
+              <p>
+                Учебный день
+              </p>
+
+              <h2>
+                {selectedDay}
+              </h2>
+            </div>
+
+
+            <span>
+              {selectedDayLessons.length}{' '}
+
+              {getLessonWord(
+                selectedDayLessons.length,
+              )}
+            </span>
+
+          </div>
+
+
+          {selectedDayLessons.length ===
+          0 ? (
+            <ScheduleEmptyState
+              icon={
+                Sparkles
+              }
+              title="Уроков нет"
+              text="На этот день расписание пока не добавлено."
+            />
+          ) : (
+            <div
+              className="modern-schedule-list"
+            >
+
+              {selectedDayLessons.map(
+                (
+                  lesson,
+                  index,
+                ) => {
+                  const isCurrentLesson =
+                    selectedDay ===
+                      today &&
+                    nextLesson?.id ===
                       lesson.id
-                    }
-                  >
-
-                    <div className="modern-schedule-time">
-
-                      <strong>
-                        {
-                          lesson.startTime
-                        }
-                      </strong>
-
-                      <span>
-                        {
-                          lesson.endTime
-                        }
-                      </span>
-
-                    </div>
 
 
-                    <div className="modern-schedule-line">
+                  return (
+                    <article
+                      className={
+                        isCurrentLesson
+                          ? 'modern-schedule-card modern-schedule-card--current'
+                          : 'modern-schedule-card'
+                      }
+                      key={
+                        lesson.id
+                      }
+                    >
 
-                      <span
-                        className={
-                          isCurrentLesson
-                            ? 'modern-schedule-number modern-schedule-number--current'
-                            : 'modern-schedule-number'
-                        }
+                      <div
+                        className="modern-schedule-time"
+                      >
+                        <strong>
+                          {lesson.startTime}
+                        </strong>
+
+                        <span>
+                          {lesson.endTime}
+                        </span>
+                      </div>
+
+
+                      <div
+                        className="modern-schedule-line"
+                      >
+                        <span
+                          className={
+                            isCurrentLesson
+                              ? 'modern-schedule-number modern-schedule-number--current'
+                              : 'modern-schedule-number'
+                          }
+                        >
+                          {lesson.lessonNumber ||
+                            index +
+                              1}
+                        </span>
+                      </div>
+
+
+                      <div
+                        className="modern-schedule-content"
                       >
 
-                        {lesson.lessonNumber ||
-                          index +
-                            1}
+                        <div
+                          className="modern-schedule-title-row"
+                        >
 
-                      </span>
+                          <div>
+                            <span>
+                              Урок №
+                              {lesson.lessonNumber ||
+                                index +
+                                  1}
+                            </span>
 
-                    </div>
+                            <h3>
+                              {lesson.subject}
+                            </h3>
+                          </div>
 
 
-                    <div className="modern-schedule-content">
-
-                      <div className="modern-schedule-title-row">
-
-                        <div>
-
-                          <span>
-                            Урок №
-                            {lesson.lessonNumber ||
-                              index +
-                                1}
-                          </span>
-
-                          <h3>
-                            {
-                              lesson.subject
-                            }
-                          </h3>
+                          {isCurrentLesson && (
+                            <span
+                              className="modern-current-badge"
+                            >
+                              Сейчас
+                            </span>
+                          )}
 
                         </div>
 
 
-                        {isCurrentLesson && (
-                          <span className="modern-current-badge">
-                            Сейчас
-                          </span>
-                        )}
+                        <div
+                          className="modern-schedule-details"
+                        >
 
-                      </div>
-
-
-                      <div className="modern-schedule-details">
-
-                        <span>
-
-                          <UserRound
-                            size={16}
-                          />
-
-                          {lesson.teacherName ||
-                            'Учитель не указан'}
-
-                        </span>
-
-
-                        {lesson.classroom && (
                           <span>
-
-                            <MapPin
+                            <UserRound
                               size={16}
                             />
 
-                            Кабинет{' '}
-                            {
-                              lesson.classroom
-                            }
-
+                            {lesson.teacherName ||
+                              'Учитель не указан'}
                           </span>
+
+
+                          {lesson.classroom && (
+                            <span>
+                              <MapPin
+                                size={16}
+                              />
+
+                              Кабинет{' '}
+                              {lesson.classroom}
+                            </span>
+                          )}
+
+                        </div>
+
+
+                        {lesson.description && (
+                          <p
+                            className="modern-schedule-description"
+                          >
+                            {lesson.description}
+                          </p>
                         )}
+
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleOpenLesson(
+                              lesson,
+                            )
+                          }
+                          style={
+                            openLessonButtonStyle
+                          }
+                        >
+                          <BookOpen
+                            size={16}
+                          />
+
+                          Открыть урок
+                        </button>
 
                       </div>
 
+                    </article>
+                  )
+                },
+              )}
 
-                      {lesson.description && (
-                        <p className="modern-schedule-description">
-                          {
-                            lesson.description
-                          }
-                        </p>
-                      )}
+            </div>
+          )}
 
-                    </div>
+        </section>
 
-                  </article>
-                )
-              },
-            )}
+      </div>
 
-          </div>
-        )}
 
-      </section>
-
-    </div>
+      {lessonPreview && (
+        <SchoolLessonPreviewModal
+          preview={
+            lessonPreview
+          }
+          loading={
+            lessonPreviewLoading
+          }
+          error={
+            lessonPreviewError
+          }
+          mode="student"
+          onClose={
+            closeLessonPreview
+          }
+        />
+      )}
+    </>
   )
 }
 
+
+/* =========================================================
+   PARENT VIEW
+========================================================= */
 
 function ParentScheduleView({
   student,
   linkedStudents,
   selectedStudentId,
   setSelectedStudentId,
-  schedule,
   loading,
   error,
   selectedDay,
   setSelectedDay,
   selectedDayLessons,
   today,
-  nextLesson,
   reload,
+  onOpenLesson,
 }) {
-  const weekDates =
-    getWeekDates()
-
-
-  if (!student) {
+  if (
+    !student
+  ) {
     return (
-      <div className="parent-schedule-page">
-
-        <ParentScheduleEmpty
+      <div
+        style={
+          parentPageStyle
+        }
+      >
+        <ScheduleEmptyState
           icon={
             UserRound
           }
           title="Ребёнок не привязан"
           text="Сначала привяжите ребёнка в родительском кабинете."
         />
-
       </div>
     )
   }
 
 
   return (
-    <div className="parent-schedule-page">
+    <div
+      style={
+        parentPageStyle
+      }
+    >
 
-      <header className="parent-schedule-header">
+      {/* HEADER */}
+
+      <header
+        style={
+          parentHeaderStyle
+        }
+      >
 
         <div>
-
-          <span>
+          <span
+            style={
+              parentEyebrowStyle
+            }
+          >
             Учебный процесс
           </span>
 
-          <h1>
+          <h1
+            style={
+              parentTitleStyle
+            }
+          >
             Расписание
           </h1>
-
         </div>
 
 
@@ -925,30 +1448,54 @@ function ParentScheduleView({
           disabled={
             loading
           }
-          aria-label="Обновить расписание"
+          style={
+            reloadButtonStyle
+          }
+          title="Обновить расписание"
         >
           <RefreshCcw
-            size={19}
+            size={18}
           />
         </button>
 
       </header>
 
 
-      <section className="parent-schedule-student">
+      {/* CHILD */}
 
-        <div className="parent-schedule-avatar">
+      <section
+        style={
+          parentStudentStyle
+        }
+      >
+
+        <div
+          style={
+            parentAvatarStyle
+          }
+        >
           {getInitials(
             student.name,
           )}
         </div>
 
 
-        <div className="parent-schedule-student-info">
+        <div
+          style={{
+            minWidth:
+              0,
 
-          <span>
+            flex:
+              1,
+          }}
+        >
+          <small
+            style={
+              parentSmallLabelStyle
+            }
+          >
             Расписание ребёнка
-          </span>
+          </small>
 
 
           {linkedStudents.length >
@@ -957,20 +1504,19 @@ function ParentScheduleView({
               value={
                 selectedStudentId
               }
-              onChange={(
-                event,
-              ) =>
-                setSelectedStudentId(
-                  event.target
-                    .value,
-                )
+              onChange={
+                (event) =>
+                  setSelectedStudentId(
+                    event.target.value,
+                  )
+              }
+              style={
+                childSelectStyle
               }
             >
 
               {linkedStudents.map(
-                (
-                  item,
-                ) => (
+                (item) => (
                   <option
                     key={
                       item.id
@@ -979,48 +1525,48 @@ function ParentScheduleView({
                       item.id
                     }
                   >
-                    {
-                      item.name
-                    }
+                    {item.name}
                   </option>
                 ),
               )}
 
             </select>
           ) : (
-            <strong>
-              {
-                student.name
+            <strong
+              style={
+                childNameStyle
               }
+            >
+              {student.name}
             </strong>
           )}
 
 
-          <div>
+          <div
+            style={
+              childMetaStyle
+            }
+          >
 
             <span>
-
               <School
-                size={14}
+                size={13}
               />
 
               {student.school ||
                 'Школа не указана'}
-
             </span>
 
 
             <span>
-
               <GraduationCap
-                size={14}
+                size={13}
               />
 
               {getStudentClass(
                 student,
               ) ||
                 'Класс не указан'}
-
             </span>
 
           </div>
@@ -1030,318 +1576,260 @@ function ParentScheduleView({
       </section>
 
 
-      <section className="parent-schedule-week">
+      {/* DAYS */}
 
-        {days.map(
-          (
-            day,
-            index,
-          ) => {
-            const date =
-              weekDates[index]
+      <section
+        style={
+          parentDaysStyle
+        }
+      >
 
-            const active =
-              selectedDay ===
-              day
-
-            const isToday =
-              today ===
-              day
-
-            return (
-              <button
-                type="button"
-                key={
-                  day
-                }
-                className={[
-                  'parent-schedule-day',
-
-                  active
-                    ? 'active'
-                    : '',
-
-                  isToday &&
-                  !active
-                    ? 'today'
-                    : '',
-                ]
-                  .filter(
-                    Boolean,
-                  )
-                  .join(' ')}
-                onClick={() =>
-                  setSelectedDay(
+        {DAYS.map(
+          (day) => (
+            <button
+              key={
+                day
+              }
+              type="button"
+              onClick={() =>
+                setSelectedDay(
+                  day,
+                )
+              }
+              style={
+                parentDayButtonStyle(
+                  selectedDay ===
                     day,
-                  )
-                }
-              >
+                  day === today,
+                )
+              }
+            >
 
-                <span>
-                  {
-                    getShortDay(
-                      day,
-                    )
-                  }
-                </span>
+              <strong>
+                {getShortDay(
+                  day,
+                )}
+              </strong>
 
-                <strong>
-                  {
-                    date.day
-                  }
-                </strong>
+              <small>
+                {day ===
+                today
+                  ? 'Сегодня'
+                  : day.slice(
+                      0,
+                      3,
+                    )}
+              </small>
 
-                <small>
-                  {
-                    date.month
-                  }
-                </small>
-
-              </button>
-            )
-          },
+            </button>
+          ),
         )}
 
       </section>
 
 
+      {/* ERROR */}
+
       {error && (
-        <div className="parent-schedule-error">
+        <div
+          style={
+            errorBoxStyle
+          }
+        >
           {error}
         </div>
       )}
 
 
+      {/* LESSONS */}
+
       {loading ? (
-        <ParentScheduleEmpty
+        <ScheduleEmptyState
           icon={
             RefreshCcw
           }
           title="Загружаем расписание"
-          text="Получаем уроки из школьного расписания..."
+          text="Получаем уроки..."
         />
       ) : (
-        <>
+        <section
+          style={
+            parentLessonsStyle
+          }
+        >
 
-          {nextLesson &&
-            selectedDay ===
-              today && (
-            <section className="parent-next-lesson">
+          <div
+            style={
+              parentLessonsHeaderStyle
+            }
+          >
+            <div>
+              <small
+                style={
+                  parentSmallLabelStyle
+                }
+              >
+                Учебный день
+              </small>
 
-              <div className="parent-next-label">
-
-                <Sparkles
-                  size={15}
-                />
-
-                Следующий урок
-
-              </div>
-
-
-              <div className="parent-next-main">
-
-                <div>
-
-                  <span>
-
-                    <Clock3
-                      size={15}
-                    />
-
-                    {
-                      nextLesson.startTime
-                    }
-                    –
-                    {
-                      nextLesson.endTime
-                    }
-
-                  </span>
-
-                  <h2>
-                    {
-                      nextLesson.subject
-                    }
-                  </h2>
-
-                </div>
-
-
-                <div className="parent-next-number">
-                  {nextLesson.lessonNumber ||
-                    '—'}
-                </div>
-
-              </div>
-
-            </section>
-          )}
-
-
-          <section className="parent-schedule-lessons">
-
-            <div className="parent-schedule-section-heading">
-
-              <div>
-
-                <span>
-                  Учебный день
-                </span>
-
-                <h2>
-                  {
-                    selectedDay
-                  }
-                </h2>
-
-              </div>
-
-
-              <strong>
-
-                {
-                  selectedDayLessons.length
-                }{' '}
-
-                {getLessonWord(
-                  selectedDayLessons.length,
-                )}
-
-              </strong>
-
+              <h2
+                style={{
+                  margin:
+                    '3px 0 0',
+                }}
+              >
+                {selectedDay}
+              </h2>
             </div>
 
 
-            {selectedDayLessons.length ===
-            0 ? (
-              <ParentScheduleEmpty
-                icon={
-                  CalendarDays
-                }
-                title="Уроков нет"
-                text="На этот день расписание пока не добавлено."
-              />
-            ) : (
-              <div className="parent-lesson-list">
+            <strong
+              style={
+                parentLessonCountStyle
+              }
+            >
+              {selectedDayLessons.length}{' '}
+              {getLessonWord(
+                selectedDayLessons.length,
+              )}
+            </strong>
+          </div>
 
-                {selectedDayLessons.map(
-                  (
-                    lesson,
-                    index,
-                  ) => (
-                    <article
-                      className="parent-lesson-card"
-                      key={
-                        lesson.id
+
+          {selectedDayLessons.length ===
+          0 ? (
+            <ScheduleEmptyState
+              icon={
+                CalendarDays
+              }
+              title="Уроков нет"
+              text="На этот день расписание пока не добавлено."
+            />
+          ) : (
+            <div
+              style={
+                parentLessonsListStyle
+              }
+            >
+
+              {selectedDayLessons.map(
+                (
+                  lesson,
+                  index,
+                ) => (
+                  <article
+                    key={
+                      lesson.id
+                    }
+                    style={
+                      parentLessonStyle
+                    }
+                  >
+
+                    <div
+                      style={
+                        parentTimeStyle
                       }
                     >
+                      <strong>
+                        {lesson.startTime}
+                      </strong>
 
-                      <div className="parent-lesson-time">
+                      <small>
+                        {lesson.endTime}
+                      </small>
+                    </div>
 
-                        <strong>
-                          {
-                            lesson.startTime
-                          }
-                        </strong>
+
+                    <div
+                      style={{
+                        minWidth:
+                          0,
+
+                        flex:
+                          1,
+                      }}
+                    >
+
+                      <small
+                        style={
+                          parentSmallLabelStyle
+                        }
+                      >
+                        Урок №
+                        {lesson.lessonNumber ||
+                          index +
+                            1}
+                      </small>
+
+
+                      <h3
+                        style={
+                          parentLessonTitleStyle
+                        }
+                      >
+                        {lesson.subject}
+                      </h3>
+
+
+                      <div
+                        style={
+                          parentLessonMetaStyle
+                        }
+                      >
 
                         <span>
-                          {
-                            lesson.endTime
-                          }
+                          <UserRound
+                            size={14}
+                          />
+
+                          {lesson.teacherName ||
+                            'Учитель не указан'}
                         </span>
 
-                      </div>
 
-
-                      <div className="parent-lesson-body">
-
-                        <div className="parent-lesson-title">
-
+                        {lesson.classroom && (
                           <span>
-                            {lesson.lessonNumber ||
-                              index +
-                                1}
-                          </span>
-
-                          <h3>
-                            {
-                              lesson.subject
-                            }
-                          </h3>
-
-                        </div>
-
-
-                        <div className="parent-lesson-details">
-
-                          <span>
-
-                            <UserRound
+                            <DoorOpen
                               size={14}
                             />
 
-                            {lesson.teacherName ||
-                              'Учитель не указан'}
-
+                            Кабинет{' '}
+                            {lesson.classroom}
                           </span>
-
-
-                          {lesson.classroom && (
-                            <span>
-
-                              <DoorOpen
-                                size={14}
-                              />
-
-                              Кабинет{' '}
-                              {
-                                lesson.classroom
-                              }
-
-                            </span>
-                          )}
-
-                        </div>
-
-
-                        {lesson.description && (
-                          <div className="parent-lesson-description">
-
-                            <BookOpen
-                              size={14}
-                            />
-
-                            <span>
-                              {
-                                lesson.description
-                              }
-                            </span>
-
-                          </div>
                         )}
 
                       </div>
 
-                    </article>
-                  ),
-                )}
 
-              </div>
-            )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onOpenLesson(
+                            lesson,
+                          )
+                        }
+                        style={
+                          parentOpenButtonStyle
+                        }
+                      >
+                        <BookOpen
+                          size={15}
+                        />
 
-          </section>
+                        Открыть урок
+                      </button>
 
+                    </div>
 
-          {schedule.length ===
-            0 && (
-            <div className="parent-schedule-note">
-              Расписание для этого
-              класса пока пустое.
+                  </article>
+                ),
+              )}
+
             </div>
           )}
 
-        </>
+        </section>
       )}
 
     </div>
@@ -1349,534 +1837,419 @@ function ParentScheduleView({
 }
 
 
-function ParentScheduleEmpty({
-  icon: Icon,
+/* =========================================================
+   SCHOOL LESSON PREVIEW
+========================================================= */
+
+function SchoolLessonPreviewModal({
+  preview,
+  loading,
+  error,
+  mode,
+  onClose,
+}) {
+  const {
+    scheduleLesson,
+    lessonDate,
+    journalLesson,
+    tasks,
+    grades,
+    attendance,
+  } = preview
+
+
+  const isParent =
+    mode ===
+    'parent'
+
+
+  return (
+    <div
+      style={
+        modalBackdropStyle
+      }
+      onMouseDown={
+        (event) => {
+          if (
+            event.target ===
+            event.currentTarget
+          ) {
+            onClose()
+          }
+        }
+      }
+    >
+
+      <section
+        style={
+          modalCardStyle
+        }
+      >
+
+        {/* HEADER */}
+
+        <div
+          style={
+            modalHeaderStyle
+          }
+        >
+
+          <div>
+            <span
+              style={
+                modalEyebrowStyle
+              }
+            >
+              {isParent
+                ? 'Урок ребёнка'
+                : 'Школьный урок'}
+            </span>
+
+
+            <h2
+              style={
+                modalTitleStyle
+              }
+            >
+              {scheduleLesson.subject}
+            </h2>
+
+
+            <p
+              style={
+                modalSubtitleStyle
+              }
+            >
+              {formatDate(
+                lessonDate,
+              )}
+              {' · '}
+              {scheduleLesson.startTime}
+              {'–'}
+              {scheduleLesson.endTime}
+            </p>
+          </div>
+
+
+          <button
+            type="button"
+            onClick={
+              onClose
+            }
+            style={
+              modalCloseStyle
+            }
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+
+        </div>
+
+
+        {/* LOADING */}
+
+        {loading ? (
+          <LessonState
+            icon={
+              BookOpen
+            }
+            title="Загружаем урок..."
+            text="Получаем тему, посещаемость, оценки и домашнее задание."
+          />
+        ) : error ? (
+          <div
+            style={
+              errorBoxStyle
+            }
+          >
+            {error}
+          </div>
+        ) : !journalLesson ? (
+          <LessonState
+            icon={
+              BookOpen
+            }
+            title="Урок ещё не заполнен"
+            text="Учитель пока не создал карточку этого урока. Данные появятся после заполнения урока."
+          />
+        ) : (
+          <div
+            style={
+              modalSectionsStyle
+            }
+          >
+
+            {/* TOPIC */}
+
+            <LessonInfoBlock
+              title="Тема урока"
+            >
+              {journalLesson.topic ||
+                'Тема пока не указана.'}
+            </LessonInfoBlock>
+
+
+            {/* ATTENDANCE */}
+
+            <LessonInfoBlock
+              title={
+                isParent
+                  ? 'Посещаемость ребёнка'
+                  : 'Моя посещаемость'
+              }
+            >
+
+              {attendance ? (
+                <>
+                  <strong>
+                    {getAttendanceStatusLabel(
+                      attendance.status,
+                    )}
+                  </strong>
+
+
+                  {attendance.comment && (
+                    <small
+                      style={
+                        lessonCommentStyle
+                      }
+                    >
+                      {attendance.comment}
+                    </small>
+                  )}
+                </>
+              ) : (
+                'Учитель пока не отметил посещаемость.'
+              )}
+
+            </LessonInfoBlock>
+
+
+            {/* GRADES */}
+
+            <LessonInfoBlock
+              title={
+                isParent
+                  ? 'Оценки ребёнка'
+                  : 'Мои оценки'
+              }
+            >
+
+              {grades.length ===
+              0 ? (
+                'Оценок за этот урок нет.'
+              ) : (
+                <div
+                  style={
+                    gradesListStyle
+                  }
+                >
+
+                  {grades.map(
+                    (grade) => (
+                      <div
+                        key={
+                          grade.id
+                        }
+                        style={
+                          gradeRowStyle
+                        }
+                      >
+
+                        <span
+                          style={
+                            gradeBadgeStyle(
+                              grade.value,
+                            )
+                          }
+                        >
+                          {grade.value}
+                        </span>
+
+
+                        <div>
+                          <strong
+                            style={{
+                              display:
+                                'block',
+                            }}
+                          >
+                            {grade.gradeType ||
+                              'Оценка'}
+                          </strong>
+
+
+                          {grade.comment && (
+                            <small
+                              style={
+                                lessonCommentStyle
+                              }
+                            >
+                              {grade.comment}
+                            </small>
+                          )}
+                        </div>
+
+                      </div>
+                    ),
+                  )}
+
+                </div>
+              )}
+
+            </LessonInfoBlock>
+
+
+            {/* HOMEWORK */}
+
+            <LessonInfoBlock
+              title="Домашнее задание"
+            >
+
+              {tasks.length ===
+              0 ? (
+                'Домашнее задание не задано.'
+              ) : (
+                <div
+                  style={
+                    taskListStyle
+                  }
+                >
+
+                  {tasks.map(
+                    (task) => (
+                      <article
+                        key={
+                          task.id
+                        }
+                        style={
+                          taskCardStyle
+                        }
+                      >
+
+                        <strong>
+                          {task.title}
+                        </strong>
+
+
+                        {task.description && (
+                          <p
+                            style={
+                              taskDescriptionStyle
+                            }
+                          >
+                            {task.description}
+                          </p>
+                        )}
+
+
+                        <small
+                          style={
+                            taskDeadlineStyle
+                          }
+                        >
+                          {task.deadline
+                            ? `Сдать до ${formatDeadline(
+                                task.deadline,
+                              )}`
+                            : 'Без срока сдачи'}
+                        </small>
+
+                      </article>
+                    ),
+                  )}
+
+                </div>
+              )}
+
+            </LessonInfoBlock>
+
+          </div>
+        )}
+
+      </section>
+
+    </div>
+  )
+}
+
+
+/* =========================================================
+   LESSON INFO BLOCK
+========================================================= */
+
+function LessonInfoBlock({
   title,
-  text,
+  children,
 }) {
   return (
-    <section className="parent-schedule-empty">
+    <section
+      style={
+        lessonBlockStyle
+      }
+    >
 
-      <div>
-        <Icon
-          size={23}
-        />
-      </div>
-
-      <span>
-
-        <strong>
-          {title}
-        </strong>
-
-        <small>
-          {text}
-        </small>
-
+      <span
+        style={
+          lessonBlockTitleStyle
+        }
+      >
+        {title}
       </span>
+
+
+      <div
+        style={
+          lessonBlockContentStyle
+        }
+      >
+        {children}
+      </div>
 
     </section>
   )
 }
 
 
-function ParentScheduleStyles() {
+/* =========================================================
+   LESSON STATE
+========================================================= */
+
+function LessonState({
+  icon: Icon,
+  title,
+  text,
+}) {
   return (
-    <style>{`
-      .parent-schedule-page,
-      .parent-schedule-page * {
-        box-sizing: border-box;
+    <div
+      style={
+        lessonStateStyle
       }
+    >
 
-      .parent-schedule-page {
-        width: 100%;
-        display: grid;
-        gap: 14px;
-        color: #0f274d;
-      }
+      {Icon && (
+        <Icon
+          size={30}
+        />
+      )}
 
-      .parent-schedule-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-      }
+      <strong>
+        {title}
+      </strong>
 
-      .parent-schedule-header > div > span,
-      .parent-schedule-section-heading > div > span {
-        display: block;
-        color: #8ca0be;
-        font-size: 10px;
-        font-weight: 900;
-        letter-spacing: .06em;
-        text-transform: uppercase;
-      }
+      <span>
+        {text}
+      </span>
 
-      .parent-schedule-header h1 {
-        margin: 3px 0 0;
-        font-size: 26px;
-        line-height: 1.1;
-        color: #082451;
-      }
-
-      .parent-schedule-header > button {
-        width: 42px;
-        height: 42px;
-        display: grid;
-        place-items: center;
-        border: 1px solid #d8e5f5;
-        border-radius: 13px;
-        background: #fff;
-        color: #2563eb;
-        cursor: pointer;
-      }
-
-      .parent-schedule-header > button:disabled {
-        opacity: .55;
-      }
-
-      .parent-schedule-student {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        padding: 12px;
-        border: 1px solid #dbeafe;
-        border-radius: 17px;
-        background:
-          linear-gradient(
-            135deg,
-            #eff6ff,
-            #ffffff
-          );
-      }
-
-      .parent-schedule-avatar {
-        width: 43px;
-        height: 43px;
-        flex: 0 0 43px;
-        display: grid;
-        place-items: center;
-        border-radius: 13px;
-        background:
-          linear-gradient(
-            145deg,
-            #2563eb,
-            #4f46e5
-          );
-        color: white;
-        font-size: 13px;
-        font-weight: 900;
-      }
-
-      .parent-schedule-student-info {
-        min-width: 0;
-        flex: 1;
-      }
-
-      .parent-schedule-student-info > span {
-        display: block;
-        color: #8ca0be;
-        font-size: 9px;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
-
-      .parent-schedule-student-info > strong {
-        display: block;
-        margin-top: 2px;
-        color: #082451;
-        font-size: 14px;
-      }
-
-      .parent-schedule-student-info select {
-        width: 100%;
-        max-width: 280px;
-        margin-top: 2px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: #082451;
-        font: inherit;
-        font-weight: 900;
-        outline: none;
-      }
-
-      .parent-schedule-student-info > div {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px 12px;
-        margin-top: 6px;
-      }
-
-      .parent-schedule-student-info > div span {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        color: #64748b;
-        font-size: 10px;
-      }
-
-      .parent-schedule-week {
-        display: grid;
-        grid-template-columns:
-          repeat(6, minmax(64px, 1fr));
-        gap: 6px;
-        overflow-x: auto;
-        padding: 2px 0 4px;
-        scrollbar-width: none;
-      }
-
-      .parent-schedule-week::-webkit-scrollbar {
-        display: none;
-      }
-
-      .parent-schedule-day {
-        min-width: 64px;
-        min-height: 76px;
-        padding: 8px 4px;
-        border: 1px solid #dce7f3;
-        border-radius: 15px;
-        background: #fff;
-        color: #71839e;
-        cursor: pointer;
-      }
-
-      .parent-schedule-day span,
-      .parent-schedule-day strong,
-      .parent-schedule-day small {
-        display: block;
-        text-align: center;
-      }
-
-      .parent-schedule-day span {
-        font-size: 9px;
-        font-weight: 900;
-      }
-
-      .parent-schedule-day strong {
-        margin-top: 4px;
-        color: #0f274d;
-        font-size: 18px;
-        line-height: 1;
-      }
-
-      .parent-schedule-day small {
-        margin-top: 4px;
-        font-size: 8px;
-        font-weight: 800;
-        text-transform: uppercase;
-      }
-
-      .parent-schedule-day.today {
-        border-color: #93c5fd;
-        background: #eff6ff;
-      }
-
-      .parent-schedule-day.active {
-        border-color: transparent;
-        background:
-          linear-gradient(
-            145deg,
-            #2563eb,
-            #4f46e5
-          );
-        color: rgba(255,255,255,.82);
-        box-shadow:
-          0 8px 20px
-          rgba(37,99,235,.18);
-      }
-
-      .parent-schedule-day.active strong {
-        color: #fff;
-      }
-
-      .parent-schedule-error {
-        padding: 11px 12px;
-        border: 1px solid #fecaca;
-        border-radius: 12px;
-        background: #fef2f2;
-        color: #b91c1c;
-        font-size: 11px;
-        font-weight: 800;
-      }
-
-      .parent-next-lesson {
-        padding: 15px;
-        border: 1px solid #dbeafe;
-        border-radius: 18px;
-        background:
-          radial-gradient(
-            circle at 90% 0%,
-            rgba(96,165,250,.15),
-            transparent 35%
-          ),
-          #fff;
-      }
-
-      .parent-next-label {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        color: #2563eb;
-        font-size: 9px;
-        font-weight: 900;
-        text-transform: uppercase;
-      }
-
-      .parent-next-main {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-        margin-top: 8px;
-      }
-
-      .parent-next-main span {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        color: #64748b;
-        font-size: 10px;
-      }
-
-      .parent-next-main h2 {
-        margin: 4px 0 0;
-        color: #082451;
-        font-size: 18px;
-      }
-
-      .parent-next-number {
-        width: 44px;
-        height: 44px;
-        flex: 0 0 44px;
-        display: grid;
-        place-items: center;
-        border-radius: 13px;
-        background: #eff6ff;
-        color: #2563eb;
-        font-size: 18px;
-        font-weight: 900;
-      }
-
-      .parent-schedule-lessons {
-        padding: 15px;
-        border: 1px solid #e0eaf5;
-        border-radius: 19px;
-        background: #fff;
-      }
-
-      .parent-schedule-section-heading {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 12px;
-      }
-
-      .parent-schedule-section-heading h2 {
-        margin: 3px 0 0;
-        color: #082451;
-        font-size: 18px;
-      }
-
-      .parent-schedule-section-heading > strong {
-        padding: 6px 8px;
-        border-radius: 9px;
-        background: #eff6ff;
-        color: #2563eb;
-        font-size: 9px;
-      }
-
-      .parent-lesson-list {
-        display: grid;
-        gap: 9px;
-      }
-
-      .parent-lesson-card {
-        display: flex;
-        min-width: 0;
-        overflow: hidden;
-        border: 1px solid #e2ebf5;
-        border-radius: 16px;
-        background: #fbfdff;
-      }
-
-      .parent-lesson-time {
-        width: 72px;
-        flex: 0 0 72px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        padding: 12px 7px;
-        border-right: 1px solid #e4edf7;
-        background: #f4f8ff;
-      }
-
-      .parent-lesson-time strong {
-        color: #1d4ed8;
-        font-size: 13px;
-      }
-
-      .parent-lesson-time span {
-        margin-top: 3px;
-        color: #64748b;
-        font-size: 10px;
-      }
-
-      .parent-lesson-body {
-        flex: 1;
-        min-width: 0;
-        padding: 11px;
-      }
-
-      .parent-lesson-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .parent-lesson-title > span {
-        width: 28px;
-        height: 28px;
-        flex: 0 0 28px;
-        display: grid;
-        place-items: center;
-        border-radius: 9px;
-        background: #eff6ff;
-        color: #2563eb;
-        font-size: 11px;
-        font-weight: 900;
-      }
-
-      .parent-lesson-title h3 {
-        min-width: 0;
-        margin: 0;
-        color: #082451;
-        font-size: 14px;
-      }
-
-      .parent-lesson-details {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px 12px;
-        margin-top: 9px;
-      }
-
-      .parent-lesson-details span {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        color: #64748b;
-        font-size: 9px;
-      }
-
-      .parent-lesson-description {
-        display: flex;
-        align-items: flex-start;
-        gap: 6px;
-        margin-top: 9px;
-        padding-top: 8px;
-        border-top: 1px solid #edf2f7;
-        color: #475569;
-        font-size: 10px;
-        line-height: 1.45;
-      }
-
-      .parent-lesson-description svg {
-        flex: 0 0 auto;
-        margin-top: 1px;
-        color: #2563eb;
-      }
-
-      .parent-schedule-empty {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        min-height: 96px;
-        padding: 14px;
-        border: 1px dashed #d5e2f0;
-        border-radius: 15px;
-        background: #fbfdff;
-      }
-
-      .parent-schedule-empty > div {
-        width: 41px;
-        height: 41px;
-        flex: 0 0 41px;
-        display: grid;
-        place-items: center;
-        border-radius: 12px;
-        background: #eff6ff;
-        color: #2563eb;
-      }
-
-      .parent-schedule-empty strong,
-      .parent-schedule-empty small {
-        display: block;
-      }
-
-      .parent-schedule-empty strong {
-        color: #082451;
-        font-size: 12px;
-      }
-
-      .parent-schedule-empty small {
-        margin-top: 3px;
-        color: #64748b;
-        font-size: 9px;
-        line-height: 1.45;
-      }
-
-      .parent-schedule-note {
-        padding: 10px;
-        border-radius: 11px;
-        background: #f8fafc;
-        color: #64748b;
-        font-size: 10px;
-        text-align: center;
-      }
-
-      @media (max-width: 600px) {
-        .parent-schedule-header h1 {
-          font-size: 22px;
-        }
-
-        .parent-schedule-week {
-          grid-template-columns:
-            repeat(6, 64px);
-        }
-
-        .parent-schedule-day {
-          min-height: 70px;
-        }
-
-        .parent-schedule-day strong {
-          font-size: 16px;
-        }
-
-        .parent-schedule-lessons {
-          padding: 11px;
-          border-radius: 16px;
-        }
-
-        .parent-lesson-time {
-          width: 64px;
-          flex-basis: 64px;
-        }
-
-        .parent-lesson-title h3 {
-          font-size: 13px;
-        }
-
-        .parent-next-main h2 {
-          font-size: 16px;
-        }
-      }
-    `}</style>
+    </div>
   )
 }
 
+
+/* =========================================================
+   EMPTY STATE
+========================================================= */
 
 function ScheduleEmptyState({
   icon: Icon,
@@ -1884,19 +2257,23 @@ function ScheduleEmptyState({
   text,
 }) {
   return (
-    <section className="schedule-empty-state">
+    <section
+      className="schedule-empty-state"
+    >
 
-      <div className="schedule-empty-state-icon">
-
+      <div
+        className="schedule-empty-state-icon"
+      >
         <Icon
           size={30}
         />
-
       </div>
+
 
       <h2>
         {title}
       </h2>
+
 
       <p>
         {text}
@@ -1907,70 +2284,9 @@ function ScheduleEmptyState({
 }
 
 
-function getWeekDates() {
-  const now =
-    new Date()
-
-  now.setHours(
-    12,
-    0,
-    0,
-    0,
-  )
-
-  const weekday =
-    now.getDay()
-
-  const distanceToMonday =
-    weekday === 0
-      ? -6
-      : 1 - weekday
-
-  const monday =
-    new Date(now)
-
-  monday.setDate(
-    now.getDate() +
-      distanceToMonday,
-  )
-
-  return days.map(
-    (
-      _,
-      index,
-    ) => {
-      const date =
-        new Date(monday)
-
-      date.setDate(
-        monday.getDate() +
-          index,
-      )
-
-      return {
-        day:
-          String(
-            date.getDate(),
-          ),
-
-        month:
-          date
-            .toLocaleDateString(
-              'ru-RU',
-              {
-                month:
-                  'short',
-              },
-            )
-            .replace(
-              '.',
-              '',
-            ),
-      }
-    },
-  )
-}
-
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function getStudentClass(
   student,
@@ -1983,18 +2299,209 @@ function getStudentClass(
 }
 
 
+function getDateForDay(
+  dayName,
+) {
+  const index =
+    DAYS.indexOf(
+      dayName,
+    )
+
+
+  const now =
+    new Date()
+
+
+  now.setHours(
+    12,
+    0,
+    0,
+    0,
+  )
+
+
+  const weekday =
+    now.getDay()
+
+
+  const distanceToMonday =
+    weekday === 0
+      ? -6
+      : 1 -
+        weekday
+
+
+  const monday =
+    new Date(
+      now,
+    )
+
+
+  monday.setDate(
+    now.getDate() +
+      distanceToMonday,
+  )
+
+
+  const date =
+    new Date(
+      monday,
+    )
+
+
+  date.setDate(
+    monday.getDate() +
+      Math.max(
+        index,
+        0,
+      ),
+  )
+
+
+  return toLocalDateString(
+    date,
+  )
+}
+
+
+function toLocalDateString(
+  date,
+) {
+  const year =
+    date.getFullYear()
+
+
+  const month =
+    String(
+      date.getMonth() +
+        1,
+    ).padStart(
+      2,
+      '0',
+    )
+
+
+  const day =
+    String(
+      date.getDate(),
+    ).padStart(
+      2,
+      '0',
+    )
+
+
+  return `${year}-${month}-${day}`
+}
+
+
+function formatDate(
+  value,
+) {
+  if (
+    !value
+  ) {
+    return '—'
+  }
+
+
+  const date =
+    new Date(
+      `${value}T12:00:00`,
+    )
+
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value
+  }
+
+
+  return date.toLocaleDateString(
+    'ru-RU',
+    {
+      day:
+        'numeric',
+
+      month:
+        'long',
+
+      year:
+        'numeric',
+    },
+  )
+}
+
+
+function formatDeadline(
+  value,
+) {
+  if (
+    !value
+  ) {
+    return '—'
+  }
+
+
+  const date =
+    new Date(
+      value,
+    )
+
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return value
+  }
+
+
+  return date.toLocaleString(
+    'ru-RU',
+    {
+      day:
+        '2-digit',
+
+      month:
+        '2-digit',
+
+      year:
+        'numeric',
+
+      hour:
+        '2-digit',
+
+      minute:
+        '2-digit',
+    },
+  )
+}
+
+
 function getInitials(
   name,
 ) {
-  if (!name) {
+  if (
+    !name
+  ) {
     return 'У'
   }
+
 
   return name
     .trim()
     .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
+    .filter(
+      Boolean,
+    )
+    .slice(
+      0,
+      2,
+    )
     .map(
       (part) =>
         part[0]
@@ -2008,7 +2515,7 @@ function getInitials(
 function getShortDay(
   day,
 ) {
-  const shortDays = {
+  const map = {
     Понедельник:
       'ПН',
 
@@ -2028,8 +2535,11 @@ function getShortDay(
       'СБ',
   }
 
+
   return (
-    shortDays[day] ||
+    map[
+      day
+    ] ||
     day
   )
 }
@@ -2040,33 +2550,956 @@ function getLessonWord(
 ) {
   const value =
     Math.abs(
-      count,
-    ) % 100
+      Number(
+        count,
+      ),
+    )
 
-  const lastDigit =
-    value % 10
+
+  const mod100 =
+    value %
+    100
+
+
+  const mod10 =
+    value %
+    10
+
 
   if (
-    value > 10 &&
-    value < 20
+    mod100 >= 11 &&
+    mod100 <= 14
   ) {
     return 'уроков'
   }
 
+
   if (
-    lastDigit === 1
+    mod10 === 1
   ) {
     return 'урок'
   }
 
+
   if (
-    lastDigit >= 2 &&
-    lastDigit <= 4
+    mod10 >= 2 &&
+    mod10 <= 4
   ) {
     return 'урока'
   }
 
+
   return 'уроков'
+}
+
+
+/* =========================================================
+   STYLES
+========================================================= */
+
+const openLessonButtonStyle = {
+  display:
+    'inline-flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'center',
+
+  gap:
+    7,
+
+  marginTop:
+    12,
+
+  padding:
+    '9px 13px',
+
+  border:
+    '1px solid #bfdbfe',
+
+  borderRadius:
+    10,
+
+  background:
+    '#eff6ff',
+
+  color:
+    '#1d4ed8',
+
+  fontSize:
+    12,
+
+  fontWeight:
+    800,
+
+  cursor:
+    'pointer',
+}
+
+
+/* =========================================================
+   MODAL STYLES
+========================================================= */
+
+const modalBackdropStyle = {
+  position:
+    'fixed',
+
+  inset:
+    0,
+
+  zIndex:
+    1200,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  padding:
+    18,
+
+  background:
+    'rgba(15, 23, 42, 0.48)',
+}
+
+
+const modalCardStyle = {
+  width:
+    'min(620px, 100%)',
+
+  maxHeight:
+    '90vh',
+
+  overflowY:
+    'auto',
+
+  padding:
+    20,
+
+  borderRadius:
+    22,
+
+  background:
+    '#ffffff',
+
+  boxShadow:
+    '0 24px 90px rgba(15, 23, 42, 0.25)',
+}
+
+
+const modalHeaderStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'flex-start',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    14,
+
+  paddingBottom:
+    16,
+
+  borderBottom:
+    '1px solid #e2e8f0',
+}
+
+
+const modalEyebrowStyle = {
+  color:
+    '#2563eb',
+
+  fontSize:
+    10,
+
+  fontWeight:
+    900,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const modalTitleStyle = {
+  margin:
+    '5px 0 0',
+
+  color:
+    '#082451',
+
+  fontSize:
+    28,
+}
+
+
+const modalSubtitleStyle = {
+  margin:
+    '5px 0 0',
+
+  color:
+    '#64748b',
+
+  fontSize:
+    13,
+}
+
+
+const modalCloseStyle = {
+  width:
+    42,
+
+  height:
+    42,
+
+  flex:
+    '0 0 42px',
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  border:
+    '1px solid #e2e8f0',
+
+  borderRadius:
+    12,
+
+  background:
+    '#ffffff',
+
+  color:
+    '#475569',
+
+  fontSize:
+    25,
+
+  cursor:
+    'pointer',
+}
+
+
+const modalSectionsStyle = {
+  display:
+    'grid',
+
+  gap:
+    12,
+
+  marginTop:
+    16,
+}
+
+
+const lessonBlockStyle = {
+  padding:
+    16,
+
+  border:
+    '1px solid #dbe4f0',
+
+  borderRadius:
+    15,
+
+  background:
+    '#fbfdff',
+}
+
+
+const lessonBlockTitleStyle = {
+  display:
+    'block',
+
+  marginBottom:
+    9,
+
+  color:
+    '#64748b',
+
+  fontSize:
+    10,
+
+  fontWeight:
+    900,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const lessonBlockContentStyle = {
+  color:
+    '#0f274d',
+
+  fontSize:
+    15,
+
+  lineHeight:
+    1.5,
+}
+
+
+const lessonCommentStyle = {
+  display:
+    'block',
+
+  marginTop:
+    4,
+
+  color:
+    '#64748b',
+}
+
+
+const lessonStateStyle = {
+  minHeight:
+    220,
+
+  display:
+    'flex',
+
+  flexDirection:
+    'column',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'center',
+
+  gap:
+    10,
+
+  padding:
+    24,
+
+  color:
+    '#64748b',
+
+  textAlign:
+    'center',
+
+  lineHeight:
+    1.6,
+}
+
+
+const errorBoxStyle = {
+  padding:
+    13,
+
+  border:
+    '1px solid #fecaca',
+
+  borderRadius:
+    12,
+
+  background:
+    '#fef2f2',
+
+  color:
+    '#b91c1c',
+
+  lineHeight:
+    1.5,
+}
+
+
+/* =========================================================
+   GRADES
+========================================================= */
+
+const gradesListStyle = {
+  display:
+    'grid',
+
+  gap:
+    8,
+}
+
+
+const gradeRowStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    11,
+
+  padding:
+    9,
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+}
+
+
+function gradeBadgeStyle(
+  value,
+) {
+  const grade =
+    Number(
+      value,
+    )
+
+
+  return {
+    width:
+      42,
+
+    height:
+      42,
+
+    flex:
+      '0 0 42px',
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    borderRadius:
+      11,
+
+    background:
+      grade >= 5
+        ? '#dcfce7'
+        : grade >= 4
+          ? '#dbeafe'
+          : grade >= 3
+            ? '#fef3c7'
+            : '#fee2e2',
+
+    color:
+      '#082451',
+
+    fontWeight:
+      900,
+
+    fontSize:
+      17,
+  }
+}
+
+
+/* =========================================================
+   TASKS
+========================================================= */
+
+const taskListStyle = {
+  display:
+    'grid',
+
+  gap:
+    9,
+}
+
+
+const taskCardStyle = {
+  padding:
+    11,
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+}
+
+
+const taskDescriptionStyle = {
+  margin:
+    '5px 0',
+
+  color:
+    '#475569',
+
+  lineHeight:
+    1.5,
+}
+
+
+const taskDeadlineStyle = {
+  color:
+    '#64748b',
+}
+
+
+/* =========================================================
+   PARENT STYLES
+========================================================= */
+
+const parentPageStyle = {
+  display:
+    'grid',
+
+  gap:
+    14,
+
+  color:
+    '#0f274d',
+}
+
+
+const parentHeaderStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    14,
+}
+
+
+const parentEyebrowStyle = {
+  display:
+    'block',
+
+  color:
+    '#64748b',
+
+  fontSize:
+    10,
+
+  fontWeight:
+    900,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const parentTitleStyle = {
+  margin:
+    '4px 0 0',
+
+  color:
+    '#082451',
+
+  fontSize:
+    28,
+}
+
+
+const reloadButtonStyle = {
+  width:
+    42,
+
+  height:
+    42,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    12,
+
+  background:
+    '#ffffff',
+
+  color:
+    '#2563eb',
+
+  cursor:
+    'pointer',
+}
+
+
+const parentStudentStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    11,
+
+  padding:
+    13,
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    17,
+
+  background:
+    '#f8fbff',
+}
+
+
+const parentAvatarStyle = {
+  width:
+    46,
+
+  height:
+    46,
+
+  flex:
+    '0 0 46px',
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  borderRadius:
+    13,
+
+  background:
+    '#2563eb',
+
+  color:
+    '#ffffff',
+
+  fontWeight:
+    900,
+}
+
+
+const parentSmallLabelStyle = {
+  display:
+    'block',
+
+  color:
+    '#8ca0be',
+
+  fontSize:
+    9,
+
+  fontWeight:
+    900,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const childNameStyle = {
+  display:
+    'block',
+
+  marginTop:
+    2,
+
+  color:
+    '#082451',
+}
+
+
+const childSelectStyle = {
+  width:
+    '100%',
+
+  maxWidth:
+    300,
+
+  marginTop:
+    3,
+
+  border:
+    'none',
+
+  background:
+    'transparent',
+
+  color:
+    '#082451',
+
+  fontWeight:
+    900,
+
+  fontSize:
+    15,
+}
+
+
+const childMetaStyle = {
+  display:
+    'flex',
+
+  flexWrap:
+    'wrap',
+
+  gap:
+    12,
+
+  marginTop:
+    7,
+
+  color:
+    '#64748b',
+
+  fontSize:
+    10,
+}
+
+
+const parentDaysStyle = {
+  display:
+    'grid',
+
+  gridTemplateColumns:
+    'repeat(6, minmax(62px, 1fr))',
+
+  gap:
+    7,
+
+  overflowX:
+    'auto',
+}
+
+
+function parentDayButtonStyle(
+  active,
+  isToday,
+) {
+  return {
+    minWidth:
+      62,
+
+    minHeight:
+      64,
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    gap:
+      3,
+
+    padding:
+      7,
+
+    border:
+      active
+        ? '1px solid #2563eb'
+        : '1px solid #dbeafe',
+
+    borderRadius:
+      13,
+
+    background:
+      active
+        ? '#2563eb'
+        : isToday
+          ? '#eff6ff'
+          : '#ffffff',
+
+    color:
+      active
+        ? '#ffffff'
+        : '#0f274d',
+
+    cursor:
+      'pointer',
+  }
+}
+
+
+const parentLessonsStyle = {
+  padding:
+    15,
+
+  border:
+    '1px solid #e2e8f0',
+
+  borderRadius:
+    18,
+
+  background:
+    '#ffffff',
+}
+
+
+const parentLessonsHeaderStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    12,
+
+  marginBottom:
+    13,
+}
+
+
+const parentLessonCountStyle = {
+  padding:
+    '7px 10px',
+
+  borderRadius:
+    9,
+
+  background:
+    '#eff6ff',
+
+  color:
+    '#2563eb',
+
+  fontSize:
+    10,
+}
+
+
+const parentLessonsListStyle = {
+  display:
+    'grid',
+
+  gap:
+    10,
+}
+
+
+const parentLessonStyle = {
+  display:
+    'flex',
+
+  gap:
+    12,
+
+  padding:
+    12,
+
+  border:
+    '1px solid #e2e8f0',
+
+  borderRadius:
+    14,
+
+  background:
+    '#fbfdff',
+}
+
+
+const parentTimeStyle = {
+  width:
+    72,
+
+  flex:
+    '0 0 72px',
+
+  display:
+    'flex',
+
+  flexDirection:
+    'column',
+
+  justifyContent:
+    'center',
+
+  color:
+    '#2563eb',
+}
+
+
+const parentLessonTitleStyle = {
+  margin:
+    '4px 0 8px',
+
+  color:
+    '#082451',
+
+  fontSize:
+    16,
+}
+
+
+const parentLessonMetaStyle = {
+  display:
+    'flex',
+
+  flexWrap:
+    'wrap',
+
+  gap:
+    10,
+
+  color:
+    '#64748b',
+
+  fontSize:
+    11,
+}
+
+
+const parentOpenButtonStyle = {
+  display:
+    'inline-flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'center',
+
+  gap:
+    6,
+
+  marginTop:
+    10,
+
+  padding:
+    '8px 11px',
+
+  border:
+    '1px solid #bfdbfe',
+
+  borderRadius:
+    9,
+
+  background:
+    '#eff6ff',
+
+  color:
+    '#1d4ed8',
+
+  fontSize:
+    11,
+
+  fontWeight:
+    800,
+
+  cursor:
+    'pointer',
 }
 
 

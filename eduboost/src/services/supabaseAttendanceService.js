@@ -38,6 +38,10 @@ export const ATTENDANCE_STATUSES = [
 ]
 
 
+/* ========================================
+   SAVE
+======================================== */
+
 export async function saveSupabaseAttendanceRecord(
   teacher,
   student,
@@ -67,19 +71,62 @@ export async function saveSupabaseAttendanceRecord(
     )
   }
 
+
   const status =
     normalizeAttendanceStatus(
       form.status,
     )
 
+
   const attendanceDate =
     form.date ||
-    new Date()
-      .toISOString()
-      .slice(
-        0,
-        10,
-      )
+    getToday()
+
+
+  const journalLessonId =
+    form.journalLessonId ||
+    null
+
+
+  const payload = {
+    student_id:
+      student.id,
+
+    subject:
+      form.subject,
+
+    status,
+
+    comment:
+      String(
+        form.comment ||
+          '',
+      ).trim(),
+
+    attendance_date:
+      attendanceDate,
+
+    journal_lesson_id:
+      journalLessonId,
+  }
+
+
+  /*
+    Если запись идёт из карточки урока,
+    уникальность строим по:
+
+    student_id + journal_lesson_id
+
+    Старые страницы продолжают работать
+    по старому ключу:
+    student_id + subject + attendance_date
+  */
+
+  const conflictKey =
+    journalLessonId
+      ? 'student_id,journal_lesson_id'
+      : 'student_id,subject,attendance_date'
+
 
   const {
     data,
@@ -90,43 +137,35 @@ export async function saveSupabaseAttendanceRecord(
         'attendance_records',
       )
       .upsert(
-        {
-          student_id:
-            student.id,
-
-          subject:
-            form.subject,
-
-          status,
-
-          comment:
-            form.comment
-              ?.trim() ||
-            '',
-
-          attendance_date:
-            attendanceDate,
-        },
+        payload,
         {
           onConflict:
-            'student_id,subject,attendance_date',
+            conflictKey,
         },
       )
       .select('*')
       .single()
 
-  if (error) {
+
+  if (
+    error
+  ) {
     throw new Error(
       error.message ||
         'Не удалось сохранить посещаемость.',
     )
   }
 
+
   return normalizeAttendanceRecord(
     data,
   )
 }
 
+
+/* ========================================
+   UPDATE
+======================================== */
 
 export async function updateSupabaseAttendanceRecord(
   recordId,
@@ -140,18 +179,18 @@ export async function updateSupabaseAttendanceRecord(
     )
   }
 
-  const status =
-    normalizeAttendanceStatus(
-      form.status,
-    )
 
   const updateData = {
-    status,
+    status:
+      normalizeAttendanceStatus(
+        form.status,
+      ),
 
     comment:
-      form.comment
-        ?.trim() ||
-      '',
+      String(
+        form.comment ||
+          '',
+      ).trim(),
 
     updated_at:
       new Date()
@@ -160,7 +199,8 @@ export async function updateSupabaseAttendanceRecord(
 
 
   if (
-    form.subject
+    form.subject !==
+    undefined
   ) {
     updateData.subject =
       form.subject
@@ -168,10 +208,21 @@ export async function updateSupabaseAttendanceRecord(
 
 
   if (
-    form.date
+    form.date !==
+    undefined
   ) {
     updateData.attendance_date =
       form.date
+  }
+
+
+  if (
+    form.journalLessonId !==
+    undefined
+  ) {
+    updateData.journal_lesson_id =
+      form.journalLessonId ||
+      null
   }
 
 
@@ -193,18 +244,26 @@ export async function updateSupabaseAttendanceRecord(
       .select('*')
       .single()
 
-  if (error) {
+
+  if (
+    error
+  ) {
     throw new Error(
       error.message ||
         'Не удалось изменить посещаемость.',
     )
   }
 
+
   return normalizeAttendanceRecord(
     data,
   )
 }
 
+
+/* ========================================
+   DELETE
+======================================== */
 
 export async function deleteSupabaseAttendanceRecord(
   recordId,
@@ -214,6 +273,7 @@ export async function deleteSupabaseAttendanceRecord(
   ) {
     return
   }
+
 
   const {
     error,
@@ -228,7 +288,10 @@ export async function deleteSupabaseAttendanceRecord(
         recordId,
       )
 
-  if (error) {
+
+  if (
+    error
+  ) {
     throw new Error(
       error.message ||
         'Не удалось удалить посещаемость.',
@@ -236,6 +299,10 @@ export async function deleteSupabaseAttendanceRecord(
   }
 }
 
+
+/* ========================================
+   STUDENT
+======================================== */
 
 export async function getSupabaseStudentAttendance(
   studentId,
@@ -245,6 +312,7 @@ export async function getSupabaseStudentAttendance(
   ) {
     return []
   }
+
 
   const {
     data,
@@ -274,12 +342,16 @@ export async function getSupabaseStudentAttendance(
         },
       )
 
-  if (error) {
+
+  if (
+    error
+  ) {
     throw new Error(
       error.message ||
         'Не удалось загрузить посещаемость ученика.',
     )
   }
+
 
   return (
     data ||
@@ -290,6 +362,10 @@ export async function getSupabaseStudentAttendance(
 }
 
 
+/* ========================================
+   CLASS ATTENDANCE
+======================================== */
+
 export async function getSupabaseClassAttendance({
   teacher,
   className,
@@ -298,11 +374,12 @@ export async function getSupabaseClassAttendance({
   dateTo = '',
 }) {
   if (
-    !teacher?.school ||
+    !teacher ||
     !className
   ) {
     return []
   }
+
 
   let query =
     supabase
@@ -311,13 +388,30 @@ export async function getSupabaseClassAttendance({
       )
       .select('*')
       .eq(
-        'school',
-        teacher.school,
-      )
-      .eq(
         'class_name',
         className,
       )
+
+
+  if (
+    teacher.schoolId
+  ) {
+    query =
+      query.eq(
+        'school_id',
+        teacher.schoolId,
+      )
+  } else if (
+    teacher.school
+  ) {
+    query =
+      query.eq(
+        'school',
+        teacher.school,
+      )
+  } else {
+    return []
+  }
 
 
   if (
@@ -373,12 +467,16 @@ export async function getSupabaseClassAttendance({
         },
       )
 
-  if (error) {
+
+  if (
+    error
+  ) {
     throw new Error(
       error.message ||
         'Не удалось загрузить посещаемость класса.',
     )
   }
+
 
   return (
     data ||
@@ -388,6 +486,106 @@ export async function getSupabaseClassAttendance({
   )
 }
 
+
+/* ========================================
+   ONE JOURNAL LESSON
+======================================== */
+
+export async function getSupabaseAttendanceForJournalLesson(
+  journalLessonId,
+) {
+  if (
+    !journalLessonId
+  ) {
+    return []
+  }
+
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        'attendance_records',
+      )
+      .select('*')
+      .eq(
+        'journal_lesson_id',
+        journalLessonId,
+      )
+      .order(
+        'created_at',
+        {
+          ascending:
+            true,
+        },
+      )
+
+
+  if (
+    error
+  ) {
+    throw new Error(
+      error.message ||
+        'Не удалось загрузить посещаемость урока.',
+    )
+  }
+
+
+  return (
+    data ||
+    []
+  ).map(
+    normalizeAttendanceRecord,
+  )
+}
+
+
+/* ========================================
+   SAVE FOR JOURNAL LESSON
+======================================== */
+
+export async function saveSupabaseJournalLessonAttendance({
+  teacher,
+  student,
+  lesson,
+  status,
+  comment = '',
+}) {
+  if (
+    !lesson?.id
+  ) {
+    throw new Error(
+      'Урок не найден.',
+    )
+  }
+
+
+  return saveSupabaseAttendanceRecord(
+    teacher,
+    student,
+    {
+      subject:
+        lesson.subject,
+
+      date:
+        lesson.date,
+
+      status,
+
+      comment,
+
+      journalLessonId:
+        lesson.id,
+    },
+  )
+}
+
+
+/* ========================================
+   STATS
+======================================== */
 
 export function calculateSupabaseAttendanceStats(
   records,
@@ -399,6 +597,7 @@ export function calculateSupabaseAttendanceStats(
       ? records
       : []
 
+
   const present =
     safeRecords.filter(
       (
@@ -407,6 +606,7 @@ export function calculateSupabaseAttendanceStats(
         record.status ===
         'present',
     ).length
+
 
   const absent =
     safeRecords.filter(
@@ -417,6 +617,7 @@ export function calculateSupabaseAttendanceStats(
         'absent',
     ).length
 
+
   const late =
     safeRecords.filter(
       (
@@ -425,6 +626,7 @@ export function calculateSupabaseAttendanceStats(
         record.status ===
         'late',
     ).length
+
 
   const excused =
     safeRecords.filter(
@@ -435,16 +637,20 @@ export function calculateSupabaseAttendanceStats(
         'excused',
     ).length
 
+
   const total =
     safeRecords.length
+
 
   const attended =
     present +
     late +
     excused
 
+
   const percent =
-    total === 0
+    total ===
+    0
       ? 0
       : Math.round(
           (
@@ -453,6 +659,7 @@ export function calculateSupabaseAttendanceStats(
           ) *
             100,
         )
+
 
   return {
     total,
@@ -470,6 +677,10 @@ export function calculateSupabaseAttendanceStats(
 }
 
 
+/* ========================================
+   STATUS LABEL
+======================================== */
+
 export function getAttendanceStatusLabel(
   status,
 ) {
@@ -482,12 +693,17 @@ export function getAttendanceStatusLabel(
         status,
     )
 
+
   return (
     item?.label ||
     'Не указан'
   )
 }
 
+
+/* ========================================
+   HELPERS
+======================================== */
 
 function normalizeAttendanceStatus(
   value,
@@ -500,6 +716,7 @@ function normalizeAttendanceStatus(
       .trim()
       .toLowerCase()
 
+
   const exists =
     ATTENDANCE_STATUSES.some(
       (
@@ -509,11 +726,36 @@ function normalizeAttendanceStatus(
         status,
     )
 
+
   return exists
     ? status
     : 'present'
 }
 
+
+function getToday() {
+  const now =
+    new Date()
+
+  const local =
+    new Date(
+      now.getTime() -
+        now.getTimezoneOffset() *
+          60000,
+    )
+
+  return local
+    .toISOString()
+    .slice(
+      0,
+      10,
+    )
+}
+
+
+/* ========================================
+   NORMALIZE
+======================================== */
 
 function normalizeAttendanceRecord(
   record,
@@ -524,6 +766,9 @@ function normalizeAttendanceRecord(
 
     school:
       record.school,
+
+    schoolId:
+      record.school_id,
 
     className:
       record.class_name,
@@ -550,6 +795,9 @@ function normalizeAttendanceRecord(
 
     date:
       record.attendance_date,
+
+    journalLessonId:
+      record.journal_lesson_id,
 
     createdAt:
       record.created_at,
