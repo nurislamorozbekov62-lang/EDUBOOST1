@@ -36,6 +36,7 @@ import ActivateStaffPage from './pages/ActivateStaffPage'
 ======================================== */
 
 import AchievementsPage from './pages/AchievementsPage'
+import AiAssistantPage from './pages/AiAssistantPage'
 import ClassesPage from './pages/ClassesPage'
 import CourseDetailsPage from './pages/CourseDetailsPage'
 import CouponPage from './pages/CouponPage'
@@ -493,6 +494,25 @@ function AppRoutes() {
           path="tasks"
           element={
             <TasksByRole />
+          }
+        />
+
+
+        {/* ========================================
+            AI ASSISTANT
+            Роль: STUDENT
+        ======================================== */}
+
+        <Route
+          path="ai"
+          element={
+            <RequireRoles
+              roles={[
+                ROLES.STUDENT,
+              ]}
+            >
+              <AiAssistantPage />
+            </RequireRoles>
           }
         />
 
@@ -978,12 +998,6 @@ function AppRoutes() {
           }
         />
 
-
-        {/* ========================================
-            ADMIN: IMPORT
-            Возвращено к заглушке.
-            Импорт учеников доступен на admin/users.
-        ======================================== */}
 
         <Route
           path="admin/import"

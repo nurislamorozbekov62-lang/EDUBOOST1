@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+
+# Build
+dist/
+# Supabase CLI temp files
+supabase/.temp/
+
+# Zip archives
+*.zip
+
+# Node
+node_modules/

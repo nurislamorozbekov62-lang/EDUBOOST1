@@ -34,6 +34,7 @@ import {
   MessageCircle,
   School,
   Settings,
+  Sparkles,
   Store,
   User,
   UserCog,
@@ -1072,6 +1073,9 @@ function createMenus(
 
 /* ========================================
    STUDENT
+
+   Правка: добавлен пункт "AI-помощник"
+   в extra.
 ======================================== */
 
 function createStudentMenu(
@@ -1138,6 +1142,22 @@ function createStudentMenu(
     ],
 
     extra: [
+
+      /* --- НОВОЕ: AI-помощник --- */
+
+      {
+        path:
+          '/ai',
+
+        label:
+          t(
+            'navigation.aiAssistant',
+          ),
+
+        icon:
+          Sparkles,
+      },
+
       {
         path:
           '/my-journal',

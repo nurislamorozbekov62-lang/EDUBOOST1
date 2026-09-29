@@ -41,6 +41,7 @@ export const translations = {
       tasks: 'Задания',
       achievements: 'Достижения',
       profile: 'Профиль',
+      aiAssistant: 'AI-помощник',
       journal: 'Журнал',
       progress: 'Успеваемость',
       attendance: 'Посещаемость',
@@ -255,6 +256,8 @@ export const translations = {
         'Жетишкендиктер',
 
       profile: 'Профиль',
+
+      aiAssistant: 'AI-жардамчы',
 
       journal: 'Журнал',
 
