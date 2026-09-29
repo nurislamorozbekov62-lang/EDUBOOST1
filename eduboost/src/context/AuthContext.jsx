@@ -6,7 +6,9 @@ import {
   useState,
 } from 'react'
 
-import { supabase } from '../lib/supabase'
+import {
+  supabase,
+} from '../lib/supabase'
 
 import {
   ROLES,
@@ -25,16 +27,6 @@ const AuthContext =
   createContext(null)
 
 
-/*
-  Через обычную публичную регистрацию
-  разрешаем создавать только:
-
-  - ученика
-  - родителя
-
-  Остальные роли создаются
-  через административную систему.
-*/
 const PUBLIC_REGISTRATION_ROLES = [
   ROLES.STUDENT,
   ROLES.PARENT,
@@ -62,17 +54,12 @@ export function AuthProvider({
   ] = useState(true)
 
 
-  /*
-    Нужен для защиты от ситуации,
-    когда несколько запросов профиля
-    приходят почти одновременно.
-  */
   const profileRequestRef =
     useRef(0)
 
 
   /* =====================================
-     RESTORE AUTH SESSION
+     RESTORE SESSION
   ===================================== */
 
   useEffect(() => {
@@ -102,12 +89,15 @@ export function AuthProvider({
         }
 
 
-        if (session?.user) {
+        if (
+          session?.user
+        ) {
           await loadProfile(
             session.user.id,
           )
         } else {
           removeCurrentUser()
+
 
           if (isMounted) {
             setUser(null)
@@ -168,11 +158,6 @@ export function AuthProvider({
             }
 
 
-            /*
-              SIGNED_IN,
-              TOKEN_REFRESHED,
-              USER_UPDATED и т.д.
-            */
             try {
               await loadProfile(
                 session.user.id,
@@ -201,16 +186,6 @@ export function AuthProvider({
 
   /* =====================================
      REALTIME PROFILE
-
-     Если profiles изменился в Supabase,
-     обновляем React user автоматически.
-
-     Например:
-     учитель принял ДЗ
-     -> PostgreSQL начислил баллы
-     -> profiles UPDATE
-     -> Realtime
-     -> новый user
   ===================================== */
 
   useEffect(() => {
@@ -243,15 +218,18 @@ export function AuthProvider({
             filter:
               `id=eq.${userId}`,
           },
-          (payload) => {
+
+          (
+            payload,
+          ) => {
+            if (
+              !payload?.new
+            ) {
+              return
+            }
+
+
             try {
-              if (
-                !payload?.new
-              ) {
-                return
-              }
-
-
               const updatedUser =
                 normalizeProfile(
                   payload.new,
@@ -274,18 +252,7 @@ export function AuthProvider({
             }
           },
         )
-        .subscribe(
-          (status) => {
-            if (
-              status ===
-              'CHANNEL_ERROR'
-            ) {
-              console.error(
-                'Ошибка подключения Realtime профиля',
-              )
-            }
-          },
-        )
+        .subscribe()
 
 
     return () => {
@@ -300,14 +267,7 @@ export function AuthProvider({
 
 
   /* =====================================
-     FALLBACK REFRESH
-
-     Если браузер был в фоне,
-     после возвращения сразу
-     перечитываем профиль.
-
-     Это дополнительная страховка,
-     даже если Realtime пропустил событие.
+     REFRESH ON FOCUS
   ===================================== */
 
   useEffect(() => {
@@ -320,7 +280,7 @@ export function AuthProvider({
       user.id
 
 
-    function handleFocus() {
+    function refresh() {
       void loadProfile(
         userId,
         {
@@ -331,44 +291,39 @@ export function AuthProvider({
     }
 
 
-    function handleVisibilityChange() {
+    function handleVisibility() {
       if (
-        document.visibilityState ===
+        document
+          .visibilityState ===
         'visible'
       ) {
-        void loadProfile(
-          userId,
-          {
-            silent:
-              true,
-          },
-        )
+        refresh()
       }
     }
 
 
     window.addEventListener(
       'focus',
-      handleFocus,
+      refresh,
     )
 
 
     document.addEventListener(
       'visibilitychange',
-      handleVisibilityChange,
+      handleVisibility,
     )
 
 
     return () => {
       window.removeEventListener(
         'focus',
-        handleFocus,
+        refresh,
       )
 
 
       document.removeEventListener(
         'visibilitychange',
-        handleVisibilityChange,
+        handleVisibility,
       )
     }
   }, [
@@ -445,11 +400,6 @@ export function AuthProvider({
     }
 
 
-    /*
-      Если после этого запроса уже
-      был запущен более новый запрос,
-      старый результат не применяем.
-    */
     if (
       requestId !==
       profileRequestRef.current
@@ -508,16 +458,18 @@ export function AuthProvider({
       ).trim()
 
 
+    const schoolId =
+      String(
+        formData.schoolId ||
+          '',
+      ).trim()
+
+
     const requestedRole =
       formData.role ||
       ROLES.STUDENT
 
 
-    /*
-      Через обычную регистрацию
-      нельзя создать сотрудника,
-      руководство или администратора.
-    */
     if (
       !PUBLIC_REGISTRATION_ROLES.includes(
         requestedRole,
@@ -529,6 +481,72 @@ export function AuthProvider({
     }
 
 
+    if (!school) {
+      throw new Error(
+        'Выберите школу',
+      )
+    }
+
+
+    if (!schoolId) {
+      throw new Error(
+        'Не удалось определить школу',
+      )
+    }
+
+
+    /*
+      Дополнительно проверяем,
+      что schoolId действительно
+      существует и школа активна.
+
+      Не доверяем только данным формы.
+    */
+    const {
+      data:
+        schoolRow,
+
+      error:
+        schoolError,
+    } =
+      await supabase
+        .from('schools')
+        .select(`
+          id,
+          name,
+          status
+        `)
+        .eq(
+          'id',
+          schoolId,
+        )
+        .eq(
+          'status',
+          'active',
+        )
+        .maybeSingle()
+
+
+    if (
+      schoolError
+    ) {
+      throw new Error(
+        'Не удалось проверить школу',
+      )
+    }
+
+
+    if (!schoolRow) {
+      throw new Error(
+        'Выбранная школа недоступна',
+      )
+    }
+
+
+    const safeSchoolName =
+      schoolRow.name
+
+
     const className =
       requestedRole ===
       ROLES.STUDENT
@@ -537,6 +555,17 @@ export function AuthProvider({
               '',
           ).trim()
         : ''
+
+
+    if (
+      requestedRole ===
+        ROLES.STUDENT &&
+      !className
+    ) {
+      throw new Error(
+        'Выберите класс',
+      )
+    }
 
 
     const {
@@ -557,9 +586,19 @@ export function AuthProvider({
               role:
                 requestedRole,
 
-              school,
+              school:
+                safeSchoolName,
+
+              schoolId:
+                schoolRow.id,
+
+              school_id:
+                schoolRow.id,
 
               className,
+
+              class_name:
+                className,
             },
           },
         })
@@ -581,9 +620,71 @@ export function AuthProvider({
     }
 
 
-    return await loadProfile(
-      data.user.id,
-    )
+    /*
+      Если signup-trigger уже создал profile,
+      наш BEFORE trigger сам заполнит
+      school_id по school.
+
+      Но дополнительно пробуем убедиться,
+      что профиль уже существует.
+    */
+    const normalized =
+      await loadProfile(
+        data.user.id,
+      )
+
+
+    /*
+      Если по какой-то причине старый
+      auth-trigger создал профиль без
+      school_id, пробуем дописать UUID.
+
+      BEFORE UPDATE trigger также
+      подстрахует это действие.
+    */
+    if (
+      normalized &&
+      !normalized.schoolId
+    ) {
+      const {
+        error:
+          updateSchoolError,
+      } =
+        await supabase
+          .from('profiles')
+          .update({
+            school:
+              safeSchoolName,
+
+            school_id:
+              schoolRow.id,
+
+            class_name:
+              className,
+          })
+          .eq(
+            'id',
+            data.user.id,
+          )
+
+
+      if (
+        updateSchoolError
+      ) {
+        console.error(
+          'Не удалось дополнительно записать school_id:',
+          updateSchoolError,
+        )
+      }
+
+
+      return await loadProfile(
+        data.user.id,
+      )
+    }
+
+
+    return normalized
   }
 
 
@@ -597,8 +698,7 @@ export function AuthProvider({
   ) {
     const normalizedEmail =
       String(
-        email ||
-          '',
+        email || '',
       )
         .trim()
         .toLowerCase()
@@ -717,10 +817,6 @@ export function AuthProvider({
     }
 
 
-    /*
-      Не ждём только Realtime.
-      Сразу перечитываем профиль.
-    */
     return await loadProfile(
       user.id,
     )
@@ -729,9 +825,6 @@ export function AuthProvider({
 
   /* =====================================
      REFRESH USER
-
-     Можно вызывать из любых страниц:
-     const { refreshUser } = useAuth()
   ===================================== */
 
   async function refreshUser() {
@@ -750,7 +843,6 @@ export function AuthProvider({
     <AuthContext.Provider
       value={{
         user,
-
         loading,
 
         register,
@@ -768,7 +860,7 @@ export function AuthProvider({
 
 
 /* ========================================
-   PERSIST PROFILE LOCALLY
+   PERSIST
 ======================================== */
 
 function persistUser(
@@ -835,6 +927,26 @@ function normalizeProfile(
         ? profile.permissions
         : [],
 
+    /*
+      Сотрудники школы.
+      В БД лежат в profiles:
+      edu_login
+      recovery_email
+      recovery_email_verified_at
+    */
+    eduLogin:
+      profile.edu_login ||
+      '',
+
+    recoveryEmail:
+      profile.recovery_email ||
+      '',
+
+    recoveryEmailVerifiedAt:
+      profile
+        .recovery_email_verified_at ||
+      null,
+
     points:
       Number(
         profile.points ??
@@ -890,7 +1002,7 @@ function normalizeProfile(
 
 
 /* ========================================
-   ROLE NORMALIZATION
+   ROLE
 ======================================== */
 
 function normalizeRole(
@@ -920,8 +1032,7 @@ function convertProfileUpdate(
 
 
   /*
-    Служебные поля специально
-    НЕ разрешаем менять отсюда:
+    ВАЖНО:
 
     role
     school
@@ -929,6 +1040,11 @@ function convertProfileUpdate(
     school_id
     position
     permissions
+    edu_login
+    recovery_email
+
+    обычный пользователь менять
+    через профиль не может.
   */
 
 
@@ -937,8 +1053,7 @@ function convertProfileUpdate(
   ) {
     result.name =
       String(
-        data.name ||
-          '',
+        data.name || '',
       ).trim()
   }
 
@@ -959,8 +1074,7 @@ function convertProfileUpdate(
   ) {
     result.points =
       Number(
-        data.points ||
-          0,
+        data.points || 0,
       )
   }
 
@@ -970,8 +1084,7 @@ function convertProfileUpdate(
   ) {
     result.xp =
       Number(
-        data.xp ||
-          0,
+        data.xp || 0,
       )
   }
 
@@ -981,8 +1094,7 @@ function convertProfileUpdate(
   ) {
     result.streak =
       Number(
-        data.streak ||
-          0,
+        data.streak || 0,
       )
   }
 
@@ -1003,8 +1115,7 @@ function convertProfileUpdate(
   ) {
     result.freezes =
       Number(
-        data.freezes ||
-          0,
+        data.freezes || 0,
       )
   }
 
@@ -1046,7 +1157,7 @@ function convertProfileUpdate(
 
 
 /* ========================================
-   LOCAL STORAGE COMPATIBILITY
+   LOCAL STORAGE
 ======================================== */
 
 function mergeUserIntoLocalStorage(
@@ -1058,7 +1169,9 @@ function mergeUserIntoLocalStorage(
 
   const exists =
     users.some(
-      (existingUser) =>
+      (
+        existingUser,
+      ) =>
         existingUser.id ===
         user.id,
     )
@@ -1078,6 +1191,7 @@ function mergeUserIntoLocalStorage(
                 }
               : existingUser,
         )
+
       : [
           ...users,
           user,
@@ -1099,8 +1213,7 @@ function translateAuthError(
 ) {
   const normalizedMessage =
     String(
-      message ||
-        '',
+      message || '',
     ).toLowerCase()
 
 

@@ -18,7 +18,6 @@ import {
   GraduationCap,
   Save,
   Trash2,
-  UserRound,
   Users,
 } from 'lucide-react'
 
@@ -41,20 +40,102 @@ import {
 } from '../services/supabaseTaskService'
 
 import {
-  ATTENDANCE_STATUSES,
-  calculateSupabaseAttendanceStats,
   getSupabaseAttendanceForJournalLesson,
   saveSupabaseJournalLessonAttendance,
+  updateSupabaseAttendanceRecord,
 } from '../services/supabaseAttendanceService'
 
 import {
-  GRADE_TYPES,
   createSupabaseJournalLessonGrade,
   deleteSupabaseGrade,
   getSupabaseGradesForJournalLesson,
-  getSupabaseStudentsByClass,
 } from '../services/supabaseJournalService'
 
+import {
+  getSupabaseStudentsByClass,
+} from '../services/schoolRosterService'
+
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const ATTENDANCE_OPTIONS = [
+  {
+    value: 'present',
+    short: '+',
+    label: 'Присутствовал',
+  },
+  {
+    value: 'absent',
+    short: '−',
+    label: 'Отсутствовал',
+  },
+  {
+    value: 'excused',
+    short: 'УВ',
+    label: 'Уважительная причина',
+  },
+  {
+    value: 'sick',
+    short: 'Б',
+    label: 'Болел',
+  },
+  {
+    value: 'late',
+    short: 'Оп',
+    label: 'Опоздал',
+  },
+]
+
+
+const WORK_TYPES = [
+  {
+    value: 'oral',
+    label: 'Устный ответ',
+  },
+  {
+    value: 'homework',
+    label: 'Домашняя работа',
+  },
+  {
+    value: 'control',
+    label: 'Контрольная работа',
+  },
+  {
+    value: 'test',
+    label: 'Тест',
+  },
+  {
+    value: 'independent',
+    label: 'Самостоятельная работа',
+  },
+  {
+    value: 'practical',
+    label: 'Практическая работа',
+  },
+  {
+    value: 'sor',
+    label: 'СОР',
+  },
+  {
+    value: 'soch',
+    label: 'СОЧ',
+  },
+]
+
+
+const QUICK_GRADES = [
+  5,
+  4,
+  3,
+  2,
+]
+
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 function SchoolLessonPage() {
   const {
@@ -101,6 +182,17 @@ function SchoolLessonPage() {
   ] = useState('')
 
 
+  /*
+    ВАЖНО:
+    никакого автоматического oral.
+  */
+
+  const [
+    selectedWorkType,
+    setSelectedWorkType,
+  ] = useState('')
+
+
   const [
     homeworkTitle,
     setHomeworkTitle,
@@ -116,28 +208,6 @@ function SchoolLessonPage() {
     setHomeworkDeadline,
   ] = useState('')
 
-  const [
-    homeworkReward,
-    setHomeworkReward,
-  ] = useState(50)
-
-  const [
-    homeworkAffectsStreak,
-    setHomeworkAffectsStreak,
-  ] = useState(true)
-
-
-  const [
-    attendanceDrafts,
-    setAttendanceDrafts,
-  ] = useState({})
-
-
-  const [
-    gradeDrafts,
-    setGradeDrafts,
-  ] = useState({})
-
 
   const [
     loading,
@@ -150,34 +220,29 @@ function SchoolLessonPage() {
   ] = useState(false)
 
   const [
-    creatingTask,
-    setCreatingTask,
-  ] = useState(false)
-
-  const [
-    savingAttendanceId,
-    setSavingAttendanceId,
-  ] = useState(null)
-
-  const [
-    savingGradeId,
-    setSavingGradeId,
-  ] = useState(null)
+    savingStudentId,
+    setSavingStudentId,
+  ] = useState('')
 
   const [
     deletingGradeId,
     setDeletingGradeId,
-  ] = useState(null)
-
+  ] = useState('')
 
   const [
-    message,
-    setMessage,
-  ] = useState('')
+    creatingTask,
+    setCreatingTask,
+  ] = useState(false)
+
 
   const [
     error,
     setError,
+  ] = useState('')
+
+  const [
+    success,
+    setSuccess,
   ] = useState('')
 
 
@@ -194,9 +259,19 @@ function SchoolLessonPage() {
   const canEdit =
     user?.role ===
       ROLES.TEACHER &&
-    lesson?.teacherId ===
-      user?.id
+    String(
+      lesson?.teacherId ||
+        '',
+    ) ===
+      String(
+        user?.id ||
+          '',
+      )
 
+
+  /* =======================================================
+     LOAD
+  ======================================================= */
 
   useEffect(() => {
     if (
@@ -211,7 +286,6 @@ function SchoolLessonPage() {
   }, [
     user?.id,
     user?.schoolId,
-    user?.school,
     user?.role,
     lessonId,
   ])
@@ -221,6 +295,7 @@ function SchoolLessonPage() {
     try {
       setLoading(true)
       setError('')
+
 
       const foundLesson =
         await getSupabaseJournalLessonById(
@@ -246,10 +321,10 @@ function SchoolLessonPage() {
 
 
       const [
-        studentsResult,
+        studentResult,
         attendanceResult,
-        gradesResult,
-        tasksResult,
+        gradeResult,
+        taskResult,
       ] =
         await Promise.allSettled([
           getSupabaseStudentsByClass(
@@ -271,86 +346,57 @@ function SchoolLessonPage() {
         ])
 
 
-      const safeStudents =
-        studentsResult.status ===
+      setStudents(
+        studentResult.status ===
           'fulfilled' &&
         Array.isArray(
-          studentsResult.value,
+          studentResult.value,
         )
-          ? studentsResult.value
-          : []
+          ? studentResult.value
+          : [],
+      )
 
 
-      const safeAttendance =
+      setAttendance(
         attendanceResult.status ===
           'fulfilled' &&
         Array.isArray(
           attendanceResult.value,
         )
           ? attendanceResult.value
-          : []
-
-
-      const safeGrades =
-        gradesResult.status ===
-          'fulfilled' &&
-        Array.isArray(
-          gradesResult.value,
-        )
-          ? gradesResult.value
-          : []
-
-
-      const safeTasks =
-        tasksResult.status ===
-          'fulfilled' &&
-        Array.isArray(
-          tasksResult.value,
-        )
-          ? tasksResult.value
-          : []
-
-
-      setStudents(
-        safeStudents,
+          : [],
       )
 
-      setAttendance(
-        safeAttendance,
-      )
 
       setGrades(
-        safeGrades,
+        gradeResult.status ===
+          'fulfilled' &&
+        Array.isArray(
+          gradeResult.value,
+        )
+          ? gradeResult.value
+          : [],
       )
+
 
       setTasks(
-        safeTasks,
+        taskResult.status ===
+          'fulfilled' &&
+        Array.isArray(
+          taskResult.value,
+        )
+          ? taskResult.value
+          : [],
       )
-
-
-      initialiseAttendanceDrafts(
-        safeStudents,
-        safeAttendance,
-      )
-
-      initialiseGradeDrafts(
-        safeStudents,
-      )
-
-
-      const failed = []
 
 
       if (
-        studentsResult.status ===
+        studentResult.status ===
         'rejected'
       ) {
-        failed.push(
-          'ученики',
-        )
-
         console.error(
-          studentsResult.reason,
+          'Students:',
+          studentResult.reason,
         )
       }
 
@@ -359,58 +405,38 @@ function SchoolLessonPage() {
         attendanceResult.status ===
         'rejected'
       ) {
-        failed.push(
-          'посещаемость',
-        )
-
         console.error(
+          'Attendance:',
           attendanceResult.reason,
         )
       }
 
 
       if (
-        gradesResult.status ===
+        gradeResult.status ===
         'rejected'
       ) {
-        failed.push(
-          'оценки',
-        )
-
         console.error(
-          gradesResult.reason,
+          'Grades:',
+          gradeResult.reason,
         )
       }
 
 
       if (
-        tasksResult.status ===
+        taskResult.status ===
         'rejected'
       ) {
-        failed.push(
-          'домашние задания',
-        )
-
         console.error(
-          tasksResult.reason,
-        )
-      }
-
-
-      if (
-        failed.length > 0
-      ) {
-        setError(
-          `Не удалось загрузить часть данных: ${failed.join(
-            ', ',
-          )}.`,
+          'Tasks:',
+          taskResult.reason,
         )
       }
     } catch (
       loadError
     ) {
       console.error(
-        'School lesson:',
+        'SchoolLessonPage:',
         loadError,
       )
 
@@ -426,86 +452,19 @@ function SchoolLessonPage() {
   }
 
 
-  function initialiseAttendanceDrafts(
-    studentRows,
-    attendanceRows,
-  ) {
-    const map = {}
-
-
-    studentRows.forEach(
-      (student) => {
-        const existing =
-          attendanceRows.find(
-            (record) =>
-              String(
-                record.studentId,
-              ) ===
-              String(
-                student.id,
-              ),
-          )
-
-
-        map[
-          student.id
-        ] = {
-          status:
-            existing?.status ||
-            'present',
-
-          comment:
-            existing?.comment ||
-            '',
-        }
-      },
-    )
-
-
-    setAttendanceDrafts(
-      map,
-    )
-  }
-
-
-  function initialiseGradeDrafts(
-    studentRows,
-  ) {
-    const map = {}
-
-
-    studentRows.forEach(
-      (student) => {
-        map[
-          student.id
-        ] = {
-          value:
-            '',
-
-          workType:
-            'oral',
-
-          comment:
-            '',
-        }
-      },
-    )
-
-
-    setGradeDrafts(
-      map,
-    )
-  }
-
+  /* =======================================================
+     MAPS
+  ======================================================= */
 
   const attendanceMap =
     useMemo(() => {
       const map =
         new Map()
 
-
       attendance.forEach(
-        (record) => {
+        (
+          record,
+        ) => {
           map.set(
             String(
               record.studentId,
@@ -515,42 +474,40 @@ function SchoolLessonPage() {
         },
       )
 
-
       return map
     }, [
       attendance,
     ])
 
 
-  const gradesByStudent =
+  const gradesMap =
     useMemo(() => {
       const map =
         new Map()
 
-
       grades.forEach(
-        (grade) => {
-          const key =
+        (
+          grade,
+        ) => {
+          const studentId =
             String(
               grade.studentId,
             )
 
-
           if (
             !map.has(
-              key,
+              studentId,
             )
           ) {
             map.set(
-              key,
+              studentId,
               [],
             )
           }
 
-
           map
             .get(
-              key,
+              studentId,
             )
             .push(
               grade,
@@ -558,39 +515,38 @@ function SchoolLessonPage() {
         },
       )
 
-
       return map
     }, [
       grades,
     ])
 
 
-  const attendanceStats =
-    useMemo(
-      () =>
-        calculateSupabaseAttendanceStats(
-          attendance,
+  const markedCount =
+    attendance.length
+
+
+  const presentCount =
+    attendance.filter(
+      (
+        record,
+      ) =>
+        [
+          'present',
+          'late',
+        ].includes(
+          record.status,
         ),
-      [
-        attendance,
-      ],
-    )
+    ).length
 
 
-  const markedStudents =
-    attendanceMap.size
-
-
-  const attendancePercent =
-    attendance.length > 0
-      ? `${attendanceStats.percent}%`
-      : '—'
-
+  /* =======================================================
+     TOPIC
+  ======================================================= */
 
   async function handleSaveTopic() {
     if (
-      !lesson?.id ||
-      !canEdit
+      !canEdit ||
+      !lesson?.id
     ) {
       return
     }
@@ -612,14 +568,12 @@ function SchoolLessonPage() {
         updated,
       )
 
-
       setTopic(
         updated.topic ||
           '',
       )
 
-
-      setMessage(
+      setSuccess(
         'Тема урока сохранена.',
       )
     } catch (
@@ -635,30 +589,16 @@ function SchoolLessonPage() {
   }
 
 
-  function updateAttendanceDraft(
-    studentId,
-    field,
-    value,
-  ) {
-    setAttendanceDrafts(
-      (current) => ({
-        ...current,
+  /* =======================================================
+     ATTENDANCE
 
-        [studentId]: {
-          ...current[
-            studentId
-          ],
+     Новая запись -> INSERT
+     Существующая -> UPDATE
+  ======================================================= */
 
-          [field]:
-            value,
-        },
-      }),
-    )
-  }
-
-
-  async function handleSaveAttendance(
+  async function handleAttendance(
     student,
+    status,
   ) {
     if (
       !canEdit ||
@@ -668,124 +608,145 @@ function SchoolLessonPage() {
     }
 
 
-    const draft =
-      attendanceDrafts[
-        student.id
-      ] || {
-        status:
-          'present',
-
-        comment:
-          '',
-      }
-
-
     try {
-      setSavingAttendanceId(
+      setSavingStudentId(
         student.id,
       )
 
       clearMessages()
 
 
-      const saved =
-        await saveSupabaseJournalLessonAttendance({
-          teacher:
-            user,
-
-          student,
-
-          lesson,
-
-          status:
-            draft.status,
-
-          comment:
-            draft.comment,
-        })
+      const existing =
+        attendanceMap.get(
+          String(
+            student.id,
+          ),
+        )
 
 
-      setAttendance(
-        (current) => {
-          const exists =
-            current.some(
-              (record) =>
-                String(
-                  record.studentId,
-                ) ===
-                String(
-                  student.id,
-                ),
-            )
+      let saved
 
 
-          if (
-            !exists
-          ) {
-            return [
-              ...current,
-              saved,
-            ]
-          }
+      if (existing?.id) {
+        saved =
+          await updateSupabaseAttendanceRecord(
+            existing.id,
+            {
+              subject:
+                lesson.subject,
 
+              status,
 
-          return current.map(
-            (record) =>
-              String(
-                record.studentId,
-              ) ===
-              String(
-                student.id,
-              )
-                ? saved
-                : record,
+              comment:
+                existing.comment ||
+                '',
+
+              date:
+                lesson.date,
+            },
           )
-        },
+      } else {
+        saved =
+          await saveSupabaseJournalLessonAttendance({
+            teacher:
+              user,
+
+            student,
+
+            lesson,
+
+            status,
+
+            comment:
+              '',
+          })
+      }
+
+
+      replaceAttendanceRecord(
+        student.id,
+        saved,
       )
 
 
-      setMessage(
-        `Посещаемость: ${student.name} сохранена.`,
+      setSuccess(
+        `${student.name}: ${getAttendanceLabel(
+          status,
+        )}.`,
       )
     } catch (
       saveError
     ) {
+      console.error(
+        'Attendance:',
+        saveError,
+      )
+
       setError(
         saveError?.message ||
           'Не удалось сохранить посещаемость.',
       )
     } finally {
-      setSavingAttendanceId(
-        null,
-      )
+      setSavingStudentId('')
     }
   }
 
 
-  function updateGradeDraft(
+  function replaceAttendanceRecord(
     studentId,
-    field,
-    value,
+    saved,
   ) {
-    setGradeDrafts(
-      (current) => ({
-        ...current,
+    setAttendance(
+      (
+        current,
+      ) => {
+        const exists =
+          current.some(
+            (
+              item,
+            ) =>
+              String(
+                item.studentId,
+              ) ===
+              String(
+                studentId,
+              ),
+          )
 
-        [studentId]: {
-          ...current[
-            studentId
-          ],
 
-          [field]:
-            value,
-        },
-      }),
+        if (!exists) {
+          return [
+            ...current,
+            saved,
+          ]
+        }
+
+
+        return current.map(
+          (
+            item,
+          ) =>
+            String(
+              item.studentId,
+            ) ===
+            String(
+              studentId,
+            )
+              ? saved
+              : item,
+        )
+      },
     )
   }
 
 
-  async function handleCreateGrade(
+  /* =======================================================
+     QUICK GRADE
+  ======================================================= */
+
+  async function handleQuickGrade(
     student,
+    gradeValue,
   ) {
     if (
       !canEdit ||
@@ -795,35 +756,87 @@ function SchoolLessonPage() {
     }
 
 
-    const draft =
-      gradeDrafts[
-        student.id
-      ]
-
-
-    const value =
+    const numericGrade =
       Number(
-        draft?.value,
+        gradeValue,
       )
 
 
     if (
-      !Number.isInteger(
-        value,
-      ) ||
-      value < 1 ||
-      value > 5
+      !QUICK_GRADES.includes(
+        numericGrade,
+      )
     ) {
       setError(
-        'Выберите оценку от 1 до 5.',
+        'Можно поставить только оценку от 2 до 5.',
       )
 
       return
     }
 
 
+    /*
+      Главное изменение:
+      тип нельзя угадать автоматически.
+    */
+
+    if (
+      !WORK_TYPES.some(
+        (
+          item,
+        ) =>
+          item.value ===
+          selectedWorkType,
+      )
+    ) {
+      setError(
+        'Сначала выберите тип работы.',
+      )
+
+      return
+    }
+
+
+    const existingAttendance =
+      attendanceMap.get(
+        String(
+          student.id,
+        ),
+      )
+
+
+    const currentStatus =
+      existingAttendance?.status ||
+      null
+
+
+    const conflict =
+      [
+        'absent',
+        'excused',
+        'sick',
+      ].includes(
+        currentStatus,
+      )
+
+
+    if (conflict) {
+      const confirmed =
+        window.confirm(
+          `${student.name} отмечен как «${getAttendanceLabel(
+            currentStatus,
+          )}».\n\nПоставить оценку ${numericGrade} и изменить посещаемость на «Присутствовал»?`,
+        )
+
+
+      if (!confirmed) {
+        return
+      }
+    }
+
+
     try {
-      setSavingGradeId(
+      setSavingStudentId(
         student.id,
       )
 
@@ -840,64 +853,111 @@ function SchoolLessonPage() {
           lesson,
 
           grade:
-            value,
+            numericGrade,
 
           workType:
-            draft?.workType ||
-            'oral',
+            selectedWorkType,
 
           comment:
-            draft?.comment ||
             '',
         })
 
 
       setGrades(
-        (current) => [
+        (
+          current,
+        ) => [
           ...current,
           created,
         ],
       )
 
 
-      setGradeDrafts(
-        (current) => ({
-          ...current,
+      /*
+        Оценка автоматически означает,
+        что ученик был на уроке.
 
-          [student.id]: {
-            value:
-              '',
+        late оставляем late.
+      */
 
-            workType:
-              current[
-                student.id
-              ]?.workType ||
-              'oral',
-
-            comment:
-              '',
-          },
-        }),
-      )
+      if (
+        !currentStatus ||
+        conflict
+      ) {
+        let savedAttendance
 
 
-      setMessage(
-        `Оценка ${value} выставлена ученику ${student.name}.`,
+        if (
+          existingAttendance?.id
+        ) {
+          savedAttendance =
+            await updateSupabaseAttendanceRecord(
+              existingAttendance.id,
+              {
+                subject:
+                  lesson.subject,
+
+                status:
+                  'present',
+
+                comment:
+                  existingAttendance.comment ||
+                  '',
+
+                date:
+                  lesson.date,
+              },
+            )
+        } else {
+          savedAttendance =
+            await saveSupabaseJournalLessonAttendance({
+              teacher:
+                user,
+
+              student,
+
+              lesson,
+
+              status:
+                'present',
+
+              comment:
+                '',
+            })
+        }
+
+
+        replaceAttendanceRecord(
+          student.id,
+          savedAttendance,
+        )
+      }
+
+
+      setSuccess(
+        `${student.name}: оценка ${numericGrade}.`,
       )
     } catch (
       saveError
     ) {
+      console.error(
+        'Grade:',
+        saveError,
+      )
+
       setError(
         saveError?.message ||
-          'Не удалось выставить оценку.',
+          'Не удалось поставить оценку.',
       )
     } finally {
-      setSavingGradeId(
-        null,
-      )
+      setSavingStudentId('')
     }
   }
 
+
+  /* =======================================================
+     DELETE GRADE
+  ======================================================= */
 
   async function handleDeleteGrade(
     grade,
@@ -906,6 +966,17 @@ function SchoolLessonPage() {
       !canEdit ||
       !grade?.id
     ) {
+      return
+    }
+
+
+    const confirmed =
+      window.confirm(
+        `Удалить оценку ${grade.value}?`,
+      )
+
+
+    if (!confirmed) {
       return
     }
 
@@ -924,16 +995,20 @@ function SchoolLessonPage() {
 
 
       setGrades(
-        (current) =>
+        (
+          current,
+        ) =>
           current.filter(
-            (item) =>
+            (
+              item,
+            ) =>
               item.id !==
               grade.id,
           ),
       )
 
 
-      setMessage(
+      setSuccess(
         'Оценка удалена.',
       )
     } catch (
@@ -944,12 +1019,14 @@ function SchoolLessonPage() {
           'Не удалось удалить оценку.',
       )
     } finally {
-      setDeletingGradeId(
-        null,
-      )
+      setDeletingGradeId('')
     }
   }
 
+
+  /* =======================================================
+     HOMEWORK
+  ======================================================= */
 
   async function handleCreateHomework(
     event,
@@ -966,27 +1043,12 @@ function SchoolLessonPage() {
 
 
     const title =
-      homeworkTitle
-        .trim()
+      homeworkTitle.trim()
 
 
-    if (
-      !title
-    ) {
+    if (!title) {
       setError(
-        'Введите название домашнего задания.',
-      )
-
-      return
-    }
-
-
-    if (
-      homeworkReward < 0 ||
-      homeworkReward > 1000
-    ) {
-      setError(
-        'Баллы должны быть от 0 до 1000.',
+        'Введите домашнее задание.',
       )
 
       return
@@ -1008,7 +1070,7 @@ function SchoolLessonPage() {
               lesson.subject,
 
             description:
-              homeworkDescription,
+              homeworkDescription.trim(),
 
             className:
               lesson.className,
@@ -1018,25 +1080,23 @@ function SchoolLessonPage() {
               null,
 
             reward:
-              Number(
-                homeworkReward ||
-                  0,
-              ),
+              0,
 
             affectsStreak:
-              Boolean(
-                homeworkAffectsStreak,
-              ),
+              false,
 
             journalLessonId:
               lesson.id,
           },
+
           user,
         )
 
 
       setTasks(
-        (current) => [
+        (
+          current,
+        ) => [
           created,
           ...current,
         ],
@@ -1046,13 +1106,9 @@ function SchoolLessonPage() {
       setHomeworkTitle('')
       setHomeworkDescription('')
       setHomeworkDeadline('')
-      setHomeworkReward(50)
-      setHomeworkAffectsStreak(
-        true,
-      )
 
 
-      setMessage(
+      setSuccess(
         'Домашнее задание добавлено.',
       )
     } catch (
@@ -1060,7 +1116,7 @@ function SchoolLessonPage() {
     ) {
       setError(
         taskError?.message ||
-          'Не удалось создать домашнее задание.',
+          'Не удалось добавить домашнее задание.',
       )
     } finally {
       setCreatingTask(false)
@@ -1069,25 +1125,25 @@ function SchoolLessonPage() {
 
 
   function clearMessages() {
-    setMessage('')
     setError('')
+    setSuccess('')
   }
 
 
-  if (
-    !user
-  ) {
+  /* =======================================================
+     ACCESS
+  ======================================================= */
+
+  if (!user) {
     return null
   }
 
 
-  if (
-    !allowedRole
-  ) {
+  if (!allowedRole) {
     return (
       <PageState
         title="Доступ запрещён"
-        text="Карточка школьного урока доступна учителю, завучу и директору."
+        text="Эта страница доступна учителю и руководству школы."
         onBack={() =>
           navigate('/')
         }
@@ -1096,24 +1152,18 @@ function SchoolLessonPage() {
   }
 
 
-  if (
-    loading
-  ) {
+  if (loading) {
     return (
       <div className="page-container">
-
         <section className="content-card">
           Загружаем урок...
         </section>
-
       </div>
     )
   }
 
 
-  if (
-    !lesson
-  ) {
+  if (!lesson) {
     return (
       <PageState
         title="Урок не найден"
@@ -1122,53 +1172,64 @@ function SchoolLessonPage() {
           'Возможно, урок был удалён.'
         }
         onBack={() =>
-          navigate(-1)
+          navigate(
+            '/journal',
+          )
         }
       />
     )
   }
 
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
-    <div className="page-container">
+    <div
+      className="page-container"
+      style={
+        styles.page
+      }
+    >
 
       <button
         type="button"
         onClick={() =>
-          navigate(-1)
+          navigate(
+            '/journal',
+          )
         }
         style={
-          styles.backButton
+          styles.back
         }
       >
         <ArrowLeft
           size={18}
         />
 
-        Назад
+        Назад к журналу
       </button>
 
 
-      <header
+      <section
+        className="content-card"
         style={
           styles.hero
         }
       >
-
         <div>
-
           <div
             style={
-              styles.heroEyebrow
+              styles.eyebrow
             }
           >
             <BookOpen
-              size={16}
+              size={15}
             />
 
-            Школьный урок
+            Урок
           </div>
-
 
           <h1
             style={
@@ -1178,133 +1239,109 @@ function SchoolLessonPage() {
             {lesson.subject}
           </h1>
 
-
           <p
             style={
-              styles.heroSubtitle
+              styles.heroMeta
             }
           >
             {lesson.className}
-
             {' · '}
-
             {formatDate(
               lesson.date,
             )}
-
             {' · '}
-
             {lesson.quarter}
-
             {' четверть'}
           </p>
-
         </div>
 
 
-        <div
+        <span
           style={
             canEdit
               ? styles.editBadge
-              : styles.readBadge
+              : styles.viewBadge
           }
         >
           {canEdit
-            ? 'Можно редактировать'
-            : 'Только просмотр'}
-        </div>
-
-      </header>
-
-
-      {message && (
-        <div
-          style={
-            styles.success
-          }
-        >
-          <CheckCircle2
-            size={18}
-          />
-
-          {message}
-        </div>
-      )}
+            ? 'Редактирование'
+            : 'Просмотр'}
+        </span>
+      </section>
 
 
       {error && (
         <div
-          className="auth-error"
-          style={{
-            marginBottom:
-              16,
-          }}
+          style={
+            styles.error
+          }
         >
           {error}
         </div>
       )}
 
 
+      {success && (
+        <div
+          style={
+            styles.success
+          }
+        >
+          <CheckCircle2
+            size={17}
+          />
+
+          {success}
+        </div>
+      )}
+
+
       <div
         style={
-          styles.statsGrid
+          styles.stats
         }
       >
-
-        <InfoCard
+        <StatCard
           icon={
             Users
           }
-          label="Учеников"
           value={
             students.length
           }
+          label="Учеников"
         />
 
-
-        <InfoCard
-          icon={
-            CheckCircle2
-          }
-          label="Отмечено"
-          value={`${markedStudents} из ${students.length}`}
-        />
-
-
-        <InfoCard
-          icon={
-            GraduationCap
-          }
-          label="Оценок"
-          value={
-            grades.length
-          }
-        />
-
-
-        <InfoCard
-          icon={
-            ClipboardList
-          }
-          label="Домашних заданий"
-          value={
-            tasks.length
-          }
-        />
-
-
-        <InfoCard
+        <StatCard
           icon={
             CalendarDays
           }
-          label="Посещаемость"
-          value={
-            attendancePercent
-          }
+          value={`${markedCount}/${students.length}`}
+          label="Отмечено"
         />
 
+        <StatCard
+          icon={
+            CheckCircle2
+          }
+          value={
+            presentCount
+          }
+          label="На уроке"
+        />
+
+        <StatCard
+          icon={
+            GraduationCap
+          }
+          value={
+            grades.length
+          }
+          label="Оценок"
+        />
       </div>
 
+
+      {/* TOPIC */}
 
       <section
         className="content-card"
@@ -1312,568 +1349,546 @@ function SchoolLessonPage() {
           styles.section
         }
       >
-
-        <SectionHeader
-          eyebrow="Журнал"
-          title="Тема урока"
-          readOnly={
-            !canEdit
+        <span
+          style={
+            styles.eyebrowText
           }
-        />
+        >
+          Тема урока
+        </span>
+
+        <h2
+          style={
+            styles.sectionTitle
+          }
+        >
+          Материал урока
+        </h2>
 
 
         {canEdit ? (
-          <>
-            <textarea
+          <div
+            style={
+              styles.topicEditor
+            }
+          >
+            <input
               value={
                 topic
               }
-              onChange={
-                (event) =>
-                  setTopic(
-                    event.target.value,
-                  )
+              onChange={(
+                event,
+              ) =>
+                setTopic(
+                  event.target.value,
+                )
               }
-              rows={3}
-              placeholder="Например: Линейные уравнения"
-              style={
-                styles.textarea
-              }
+              placeholder="Например: Имя существительное"
             />
-
 
             <button
               type="button"
-              onClick={
-                handleSaveTopic
-              }
+              className="primary-button"
               disabled={
                 savingTopic
               }
-              style={
-                styles.primaryButton
+              onClick={
+                handleSaveTopic
               }
             >
               <Save
-                size={17}
+                size={16}
               />
 
               {savingTopic
                 ? 'Сохраняем...'
-                : 'Сохранить тему'}
+                : 'Сохранить'}
             </button>
-          </>
+          </div>
         ) : (
           <div
             style={
-              styles.readonlyBox
+              styles.readBox
             }
           >
             {lesson.topic ||
-              'Тема урока не заполнена.'}
+              'Тема пока не указана.'}
           </div>
         )}
-
       </section>
 
 
+      {/* STUDENTS */}
+
       <section
         className="content-card"
-        style={
-          styles.section
-        }
+        style={{
+          ...styles.section,
+          padding:
+            0,
+          overflow:
+            'hidden',
+        }}
       >
 
-        <SectionHeader
-          eyebrow="Класс"
-          title="Ученики, посещаемость и оценки"
-          readOnly={
-            !canEdit
+        <div
+          style={
+            styles.studentsHeader
           }
-        />
+        >
+          <div>
+            <span
+              style={
+                styles.eyebrowText
+              }
+            >
+              Класс
+            </span>
 
-
-        {students.length ===
-        0 ? (
-          <div
-            style={
-              styles.empty
-            }
-          >
-            В этом классе нет учеников.
+            <h2
+              style={
+                styles.sectionTitle
+              }
+            >
+              Ученики
+            </h2>
           </div>
-        ) : (
+
+
           <div
             style={
-              styles.studentList
+              styles.legend
             }
           >
+            <span>
+              <b>+</b> был
+            </span>
 
-            {students.map(
-              (student) => {
-                const existingAttendance =
-                  attendanceMap.get(
-                    String(
-                      student.id,
-                    ),
+            <span>
+              <b>−</b> нет
+            </span>
+
+            <span>
+              <b>УВ</b> уваж.
+            </span>
+
+            <span>
+              <b>Б</b> болел
+            </span>
+
+            <span>
+              <b>Оп</b> опоздал
+            </span>
+          </div>
+        </div>
+
+
+        {/* WORK TYPE */}
+
+        {canEdit && (
+          <div
+            style={
+              styles.workTypeBar
+            }
+          >
+            <label
+              style={
+                styles.workTypeLabel
+              }
+            >
+              <span>
+                Тип работы для оценки
+              </span>
+
+              <select
+                value={
+                  selectedWorkType
+                }
+                onChange={(
+                  event,
+                ) => {
+                  setSelectedWorkType(
+                    event.target.value,
                   )
 
+                  setError('')
+                }}
+              >
+                <option value="">
+                  Выберите тип работы
+                </option>
 
-                const attendanceDraft =
-                  attendanceDrafts[
-                    student.id
-                  ] || {
-                    status:
-                      'present',
+                {WORK_TYPES.map(
+                  (
+                    item,
+                  ) => (
+                    <option
+                      key={
+                        item.value
+                      }
+                      value={
+                        item.value
+                      }
+                    >
+                      {item.label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
 
-                    comment:
-                      '',
+
+            <small
+              style={
+                styles.muted
+              }
+            >
+              Выберите один раз, затем ставьте оценки ученикам.
+            </small>
+          </div>
+        )}
+
+
+        <div
+          style={
+            styles.tableScroll
+          }
+        >
+          <table
+            style={
+              styles.table
+            }
+          >
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    ...styles.th,
+                    ...styles.studentColumn,
+                  }}
+                >
+                  Ученик
+                </th>
+
+                <th
+                  style={
+                    styles.th
                   }
+                >
+                  Посещаемость
+                </th>
+
+                <th
+                  style={
+                    styles.th
+                  }
+                >
+                  Оценка
+                </th>
+
+                <th
+                  style={
+                    styles.th
+                  }
+                >
+                  Выставлено
+                </th>
+              </tr>
+            </thead>
 
 
-                const studentGrades =
-                  gradesByStudent.get(
+            <tbody>
+              {students.map(
+                (
+                  student,
+                  index,
+                ) => {
+                  const studentAttendance =
+                    attendanceMap.get(
+                      String(
+                        student.id,
+                      ),
+                    )
+
+
+                  const studentGrades =
+                    gradesMap.get(
+                      String(
+                        student.id,
+                      ),
+                    ) ||
+                    []
+
+
+                  const isSaving =
+                    String(
+                      savingStudentId,
+                    ) ===
                     String(
                       student.id,
-                    ),
-                  ) ||
-                  []
+                    )
 
 
-                const gradeDraft =
-                  gradeDrafts[
-                    student.id
-                  ] || {
-                    value:
-                      '',
-
-                    workType:
-                      'oral',
-
-                    comment:
-                      '',
-                  }
-
-
-                return (
-                  <article
-                    key={
-                      student.id
-                    }
-                    style={
-                      styles.studentCard
-                    }
-                  >
-
-                    <div
-                      style={
-                        styles.studentHeader
+                  return (
+                    <tr
+                      key={
+                        student.id
                       }
                     >
 
-                      <div
+                      <td
+                        style={{
+                          ...styles.td,
+                          ...styles.studentColumn,
+                        }}
+                      >
+                        <div
+                          style={
+                            styles.studentIdentity
+                          }
+                        >
+                          <span
+                            style={
+                              styles.number
+                            }
+                          >
+                            {index + 1}
+                          </span>
+
+                          <div
+                            style={{
+                              minWidth:
+                                0,
+                            }}
+                          >
+                            <strong
+                              style={
+                                styles.studentName
+                              }
+                            >
+                              {student.name}
+                            </strong>
+
+                            <small
+                              style={
+                                styles.studentLogin
+                              }
+                            >
+                              {student.studentLogin ||
+                                student.className}
+                            </small>
+                          </div>
+                        </div>
+                      </td>
+
+
+                      <td
                         style={
-                          styles.studentIdentity
+                          styles.td
                         }
                       >
                         <div
                           style={
-                            styles.avatar
+                            styles.quickRow
                           }
                         >
-                          {String(
-                            student.name ||
-                              'У',
-                          )
-                            .charAt(
-                              0,
-                            )
-                            .toUpperCase()}
+                          {ATTENDANCE_OPTIONS.map(
+                            (
+                              option,
+                            ) => (
+                              <button
+                                key={
+                                  option.value
+                                }
+                                type="button"
+                                disabled={
+                                  !canEdit ||
+                                  isSaving
+                                }
+                                title={
+                                  option.label
+                                }
+                                style={
+                                  attendanceButtonStyle(
+                                    option.value,
+                                    studentAttendance
+                                      ?.status ===
+                                      option.value,
+                                  )
+                                }
+                                onClick={() =>
+                                  handleAttendance(
+                                    student,
+                                    option.value,
+                                  )
+                                }
+                              >
+                                {option.short}
+                              </button>
+                            ),
+                          )}
                         </div>
+                      </td>
 
 
-                        <div>
-                          <strong
-                            style={
-                              styles.studentName
-                            }
-                          >
-                            {student.name}
-                          </strong>
-
-                          <small
-                            style={
-                              styles.studentClass
-                            }
-                          >
-                            {lesson.className}
-                          </small>
-                        </div>
-                      </div>
-
-
-                      <div
+                      <td
                         style={
-                          styles.gradePills
+                          styles.td
                         }
                       >
+                        {canEdit ? (
+                          <div
+                            style={
+                              styles.gradeButtons
+                            }
+                          >
+                            {QUICK_GRADES.map(
+                              (
+                                grade,
+                              ) => (
+                                <button
+                                  key={
+                                    grade
+                                  }
+                                  type="button"
+                                  disabled={
+                                    isSaving
+                                  }
+                                  style={{
+                                    ...quickGradeStyle(
+                                      grade,
+                                    ),
 
+                                    opacity:
+                                      selectedWorkType
+                                        ? 1
+                                        : 0.5,
+                                  }}
+                                  onClick={() =>
+                                    handleQuickGrade(
+                                      student,
+                                      grade,
+                                    )
+                                  }
+                                >
+                                  {grade}
+                                </button>
+                              ),
+                            )}
+                          </div>
+                        ) : (
+                          <span
+                            style={
+                              styles.muted
+                            }
+                          >
+                            Только просмотр
+                          </span>
+                        )}
+                      </td>
+
+
+                      <td
+                        style={
+                          styles.td
+                        }
+                      >
                         {studentGrades.length ===
                         0 ? (
                           <span
                             style={
-                              styles.noGrades
+                              styles.muted
                             }
                           >
-                            Нет оценок
+                            —
                           </span>
-                        ) : (
-                          studentGrades.map(
-                            (grade) => (
-                              <div
-                                key={
-                                  grade.id
-                                }
-                                style={
-                                  styles.gradeItem
-                                }
-                              >
-
-                                <span
-                                  style={
-                                    gradeStyle(
-                                      grade.value,
-                                    )
-                                  }
-                                  title={
-                                    `${grade.gradeType}${
-                                      grade.comment
-                                        ? ` · ${grade.comment}`
-                                        : ''
-                                    }`
-                                  }
-                                >
-                                  {grade.value}
-                                </span>
-
-
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleDeleteGrade(
-                                        grade,
-                                      )
-                                    }
-                                    disabled={
-                                      deletingGradeId ===
-                                      grade.id
-                                    }
-                                    style={
-                                      styles.deleteGradeButton
-                                    }
-                                    title="Удалить оценку"
-                                  >
-                                    <Trash2
-                                      size={13}
-                                    />
-                                  </button>
-                                )}
-
-                              </div>
-                            ),
-                          )
-                        )}
-
-                      </div>
-
-                    </div>
-
-
-                    <div
-                      style={
-                        styles.studentControls
-                      }
-                    >
-
-                      <div
-                        style={
-                          styles.controlBlock
-                        }
-                      >
-
-                        <strong>
-                          Посещаемость
-                        </strong>
-
-
-                        {canEdit ? (
-                          <>
-                            <select
-                              value={
-                                attendanceDraft.status
-                              }
-                              onChange={
-                                (event) =>
-                                  updateAttendanceDraft(
-                                    student.id,
-                                    'status',
-                                    event.target.value,
-                                  )
-                              }
-                            >
-                              {ATTENDANCE_STATUSES.map(
-                                (status) => (
-                                  <option
-                                    key={
-                                      status.value
-                                    }
-                                    value={
-                                      status.value
-                                    }
-                                  >
-                                    {status.label}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-
-
-                            <input
-                              value={
-                                attendanceDraft.comment
-                              }
-                              onChange={
-                                (event) =>
-                                  updateAttendanceDraft(
-                                    student.id,
-                                    'comment',
-                                    event.target.value,
-                                  )
-                              }
-                              placeholder="Комментарий"
-                            />
-
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleSaveAttendance(
-                                  student,
-                                )
-                              }
-                              disabled={
-                                savingAttendanceId ===
-                                student.id
-                              }
-                              style={
-                                styles.secondaryButton
-                              }
-                            >
-                              {savingAttendanceId ===
-                              student.id
-                                ? 'Сохраняем...'
-                                : existingAttendance
-                                  ? 'Обновить'
-                                  : 'Отметить'}
-                            </button>
-                          </>
-                        ) : (
-                          <AttendanceView
-                            record={
-                              existingAttendance
-                            }
-                          />
-                        )}
-
-                      </div>
-
-
-                      <div
-                        style={
-                          styles.controlBlock
-                        }
-                      >
-
-                        <strong>
-                          Оценка
-                        </strong>
-
-
-                        {canEdit ? (
-                          <>
-                            <select
-                              value={
-                                gradeDraft.value
-                              }
-                              onChange={
-                                (event) =>
-                                  updateGradeDraft(
-                                    student.id,
-                                    'value',
-                                    event.target.value,
-                                  )
-                              }
-                            >
-                              <option value="">
-                                Выберите
-                              </option>
-
-                              {[5, 4, 3, 2, 1].map(
-                                (grade) => (
-                                  <option
-                                    key={
-                                      grade
-                                    }
-                                    value={
-                                      grade
-                                    }
-                                  >
-                                    {grade}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-
-
-                            <select
-                              value={
-                                gradeDraft.workType
-                              }
-                              onChange={
-                                (event) =>
-                                  updateGradeDraft(
-                                    student.id,
-                                    'workType',
-                                    event.target.value,
-                                  )
-                              }
-                            >
-                              {GRADE_TYPES.map(
-                                (type) => (
-                                  <option
-                                    key={
-                                      type.value
-                                    }
-                                    value={
-                                      type.value
-                                    }
-                                  >
-                                    {type.label}
-                                  </option>
-                                ),
-                              )}
-                            </select>
-
-
-                            <input
-                              value={
-                                gradeDraft.comment
-                              }
-                              onChange={
-                                (event) =>
-                                  updateGradeDraft(
-                                    student.id,
-                                    'comment',
-                                    event.target.value,
-                                  )
-                              }
-                              placeholder="Комментарий к оценке"
-                            />
-
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleCreateGrade(
-                                  student,
-                                )
-                              }
-                              disabled={
-                                savingGradeId ===
-                                student.id
-                              }
-                              style={
-                                styles.primaryButtonSmall
-                              }
-                            >
-                              {savingGradeId ===
-                              student.id
-                                ? 'Сохраняем...'
-                                : 'Поставить оценку'}
-                            </button>
-                          </>
                         ) : (
                           <div
                             style={
-                              styles.readonlyMini
+                              styles.existingGrades
                             }
                           >
-                            {studentGrades.length >
-                            0
-                              ? `${studentGrades.length} оценок`
-                              : 'Оценок нет'}
+                            {studentGrades.map(
+                              (
+                                grade,
+                              ) => (
+                                <div
+                                  key={
+                                    grade.id
+                                  }
+                                  style={
+                                    styles.existingGrade
+                                  }
+                                  title={
+                                    getWorkTypeName(
+                                      grade.workType,
+                                    )
+                                  }
+                                >
+                                  <span
+                                    style={
+                                      gradeBadgeStyle(
+                                        grade.value,
+                                      )
+                                    }
+                                  >
+                                    {grade.value}
+                                  </span>
+
+
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      title="Удалить оценку"
+                                      disabled={
+                                        deletingGradeId ===
+                                        grade.id
+                                      }
+                                      style={
+                                        styles.deleteGrade
+                                      }
+                                      onClick={() =>
+                                        handleDeleteGrade(
+                                          grade,
+                                        )
+                                      }
+                                    >
+                                      <Trash2
+                                        size={14}
+                                      />
+                                    </button>
+                                  )}
+                                </div>
+                              ),
+                            )}
                           </div>
                         )}
+                      </td>
 
-                      </div>
-
-                    </div>
-
-                  </article>
-                )
-              },
-            )}
-
-          </div>
-        )}
-
-      </section>
+                    </tr>
+                  )
+                },
+              )}
+            </tbody>
+          </table>
 
 
-      <section
-        style={
-          styles.summaryGrid
-        }
-      >
-
-        <MiniStat
-          value={
-            attendanceStats.present
-          }
-          label="Присутствовали"
-        />
-
-        <MiniStat
-          value={
-            attendanceStats.absent
-          }
-          label="Отсутствовали"
-        />
-
-        <MiniStat
-          value={
-            attendanceStats.late
-          }
-          label="Опоздали"
-        />
-
-        <MiniStat
-          value={
-            attendanceStats.excused
-          }
-          label="Уважительная"
-        />
-
-        <MiniStat
-          value={
-            attendancePercent
-          }
-          label="Посещаемость"
-        />
+          {students.length ===
+            0 && (
+            <div
+              style={
+                styles.empty
+              }
+            >
+              В классе нет активированных учеников.
+            </div>
+          )}
+        </div>
 
       </section>
 
+
+      {/* HOMEWORK */}
 
       <section
         className="content-card"
@@ -1881,48 +1896,50 @@ function SchoolLessonPage() {
           styles.section
         }
       >
-
-        <SectionHeader
-          eyebrow="Учебный процесс"
-          title="Домашнее задание"
-          readOnly={
-            !canEdit
+        <span
+          style={
+            styles.eyebrowText
           }
-        />
+        >
+          Задание
+        </span>
+
+        <h2
+          style={
+            styles.sectionTitle
+          }
+        >
+          Домашняя работа
+        </h2>
 
 
-        {tasks.length ===
-        0 ? (
-          <div
-            style={
-              styles.empty
-            }
-          >
-            Домашнее задание пока не добавлено.
-          </div>
-        ) : (
+        {tasks.length >
+        0 && (
           <div
             style={
               styles.taskList
             }
           >
-
             {tasks.map(
-              (task) => (
-                <article
+              (
+                task,
+              ) => (
+                <div
                   key={
                     task.id
                   }
                   style={
-                    styles.taskCard
+                    styles.task
                   }
                 >
+                  <ClipboardList
+                    size={18}
+                  />
 
                   <div>
                     <strong>
                       {task.title}
                     </strong>
-
 
                     {task.description && (
                       <p
@@ -1934,58 +1951,21 @@ function SchoolLessonPage() {
                       </p>
                     )}
 
-                  </div>
-
-
-                  <div
-                    style={
-                      styles.taskMeta
-                    }
-                  >
-
                     <small
                       style={
-                        styles.taskDeadline
+                        styles.muted
                       }
                     >
                       {task.deadline
-                        ? `Срок: ${formatDateTime(
+                        ? `Срок: ${formatDate(
                             task.deadline,
                           )}`
                         : 'Без срока'}
                     </small>
-
-
-                    <small
-                      style={
-                        styles.taskReward
-                      }
-                    >
-                      {`${Number(
-                        task.reward ||
-                          0,
-                      )} баллов`}
-                    </small>
-
-
-                    <small
-                      style={
-                        task.affectsStreak
-                          ? styles.taskStreakOn
-                          : styles.taskStreakOff
-                      }
-                    >
-                      {task.affectsStreak
-                        ? 'Влияет на серию'
-                        : 'Не влияет на серию'}
-                    </small>
-
                   </div>
-
-                </article>
+                </div>
               ),
             )}
-
           </div>
         )}
 
@@ -1999,284 +1979,123 @@ function SchoolLessonPage() {
               styles.homeworkForm
             }
           >
-
-            <h3
-              style={{
-                margin:
-                  0,
-              }}
-            >
-              Добавить домашнее задание
-            </h3>
-
-
             <label className="form-group">
-
               <span>
-                Название
+                Задание
               </span>
-
 
               <input
                 value={
                   homeworkTitle
                 }
-                onChange={
-                  (event) =>
-                    setHomeworkTitle(
-                      event.target.value,
-                    )
+                onChange={(
+                  event,
+                ) =>
+                  setHomeworkTitle(
+                    event.target.value,
+                  )
                 }
-                placeholder="Например: Решить № 15–20"
-                required
+                placeholder="Например: Упр. 25, стр. 48"
               />
-
             </label>
 
 
             <label className="form-group">
-
               <span>
-                Описание
+                Комментарий
               </span>
 
-
               <textarea
+                rows={2}
                 value={
                   homeworkDescription
                 }
-                onChange={
-                  (event) =>
-                    setHomeworkDescription(
-                      event.target.value,
-                    )
+                onChange={(
+                  event,
+                ) =>
+                  setHomeworkDescription(
+                    event.target.value,
+                  )
                 }
-                rows={3}
-                placeholder="Что нужно выполнить"
-                style={
-                  styles.textarea
-                }
+                placeholder="Дополнительные пояснения"
               />
-
             </label>
 
 
             <label className="form-group">
-
               <span>
-                Срок сдачи
+                Срок
               </span>
 
-
               <input
-                type="datetime-local"
+                type="date"
                 value={
                   homeworkDeadline
                 }
-                onChange={
-                  (event) =>
-                    setHomeworkDeadline(
-                      event.target.value,
-                    )
+                onChange={(
+                  event,
+                ) =>
+                  setHomeworkDeadline(
+                    event.target.value,
+                  )
                 }
               />
-
             </label>
-
-
-            <div
-              style={
-                styles.homeworkOptions
-              }
-            >
-
-              <label className="form-group">
-
-                <span>
-                  Баллы за выполнение
-                </span>
-
-
-                <input
-                  type="number"
-                  min="0"
-                  max="1000"
-                  value={
-                    homeworkReward
-                  }
-                  onChange={
-                    (event) =>
-                      setHomeworkReward(
-                        Math.max(
-                          0,
-                          Number(
-                            event.target.value,
-                          ) ||
-                            0,
-                        ),
-                      )
-                  }
-                />
-
-              </label>
-
-
-              <label
-                style={
-                  styles.streakToggle
-                }
-              >
-
-                <input
-                  type="checkbox"
-                  checked={
-                    homeworkAffectsStreak
-                  }
-                  onChange={
-                    (event) =>
-                      setHomeworkAffectsStreak(
-                        event.target.checked,
-                      )
-                  }
-                />
-
-
-                <div>
-
-                  <strong>
-                    Влияет на серию
-                  </strong>
-
-                  <small>
-                    Выполненное ДЗ поддерживает серию ученика
-                  </small>
-
-                </div>
-
-              </label>
-
-            </div>
 
 
             <button
               type="submit"
+              className="primary-button"
               disabled={
                 creatingTask
               }
-              style={
-                styles.primaryButton
-              }
             >
               <ClipboardList
-                size={17}
+                size={16}
               />
 
               {creatingTask
-                ? 'Создаём...'
-                : 'Добавить задание'}
+                ? 'Добавляем...'
+                : 'Добавить домашнее задание'}
             </button>
-
           </form>
         )}
-
       </section>
-
-
-      <div
-        style={
-          styles.footerInfo
-        }
-      >
-        <UserRound
-          size={17}
-        />
-
-        {canEdit
-          ? 'Вы редактируете свой урок.'
-          : 'Данные урока доступны только для просмотра.'}
-      </div>
 
     </div>
   )
 }
 
 
-function SectionHeader({
-  eyebrow,
-  title,
-  readOnly,
+/* =========================================================
+   SMALL COMPONENTS
+========================================================= */
+
+function StatCard({
+  icon: Icon,
+  value,
+  label,
 }) {
   return (
     <div
       style={
-        styles.sectionHeader
+        styles.statCard
       }
     >
-
-      <div>
-
-        <p
-          style={
-            styles.sectionEyebrow
-          }
-        >
-          {eyebrow}
-        </p>
-
-        <h2
-          style={
-            styles.sectionTitle
-          }
-        >
-          {title}
-        </h2>
-
-      </div>
-
-
-      {readOnly && (
-        <span
-          style={
-            styles.readBadge
-          }
-        >
-          Только просмотр
-        </span>
-      )}
-
-    </div>
-  )
-}
-
-
-function InfoCard({
-  icon: Icon,
-  label,
-  value,
-}) {
-  return (
-    <article
-      style={
-        styles.infoCard
-      }
-    >
-
-      <div
+      <span
         style={
-          styles.infoIcon
+          styles.statIcon
         }
       >
         <Icon
-          size={21}
+          size={18}
         />
-      </div>
-
+      </span>
 
       <div>
-
         <strong
           style={
-            styles.infoValue
+            styles.statValue
           }
         >
           {value}
@@ -2284,83 +2103,12 @@ function InfoCard({
 
         <small
           style={
-            styles.infoLabel
+            styles.statLabel
           }
         >
           {label}
         </small>
-
       </div>
-
-    </article>
-  )
-}
-
-
-function MiniStat({
-  value,
-  label,
-}) {
-  return (
-    <article
-      style={
-        styles.miniStat
-      }
-    >
-      <strong>
-        {value}
-      </strong>
-
-      <small>
-        {label}
-      </small>
-    </article>
-  )
-}
-
-
-function AttendanceView({
-  record,
-}) {
-  if (
-    !record
-  ) {
-    return (
-      <span
-        style={
-          styles.notMarked
-        }
-      >
-        Не отмечен
-      </span>
-    )
-  }
-
-
-  const item =
-    ATTENDANCE_STATUSES.find(
-      (status) =>
-        status.value ===
-        record.status,
-    )
-
-
-  return (
-    <div
-      style={
-        styles.readonlyMini
-      }
-    >
-      <strong>
-        {item?.label ||
-          record.status}
-      </strong>
-
-      {record.comment && (
-        <small>
-          {record.comment}
-        </small>
-      )}
     </div>
   )
 }
@@ -2373,9 +2121,7 @@ function PageState({
 }) {
   return (
     <div className="page-container">
-
       <section className="content-card">
-
         <h2>
           {title}
         </h2>
@@ -2386,23 +2132,51 @@ function PageState({
 
         <button
           type="button"
+          className="primary-button"
           onClick={
             onBack
           }
-          style={
-            styles.backButton
-          }
         >
-          <ArrowLeft
-            size={18}
-          />
-
           Назад
         </button>
-
       </section>
-
     </div>
+  )
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getAttendanceLabel(
+  status,
+) {
+  return (
+    ATTENDANCE_OPTIONS.find(
+      (
+        item,
+      ) =>
+        item.value ===
+        status,
+    )?.label ||
+    status
+  )
+}
+
+
+function getWorkTypeName(
+  workType,
+) {
+  return (
+    WORK_TYPES.find(
+      (
+        item,
+      ) =>
+        item.value ===
+        workType,
+    )?.label ||
+    'Тип работы'
   )
 }
 
@@ -2410,37 +2184,27 @@ function PageState({
 function formatDate(
   value,
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return '—'
   }
 
-
   const date =
     new Date(
-      `${value}T12:00:00`,
+      `${String(
+        value,
+      ).slice(
+        0,
+        10,
+      )}T12:00:00`,
     )
-
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return value
-  }
-
 
   return date.toLocaleDateString(
     'ru-RU',
     {
       day:
-        'numeric',
-
+        '2-digit',
       month:
         'long',
-
       year:
         'numeric',
     },
@@ -2448,1048 +2212,699 @@ function formatDate(
 }
 
 
-function formatDateTime(
-  value,
+/* =========================================================
+   COLORS
+========================================================= */
+
+function attendanceColors(
+  status,
 ) {
-  if (
-    !value
-  ) {
-    return '—'
-  }
-
-
-  const date =
-    new Date(
-      value,
-    )
-
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return value
-  }
-
-
-  return date.toLocaleString(
-    'ru-RU',
-    {
-      day:
-        '2-digit',
-
-      month:
-        '2-digit',
-
-      year:
-        'numeric',
-
-      hour:
-        '2-digit',
-
-      minute:
-        '2-digit',
+  const map = {
+    present: {
+      background:
+        '#dcfce7',
+      color:
+        '#15803d',
     },
-  )
+    absent: {
+      background:
+        '#fee2e2',
+      color:
+        '#b91c1c',
+    },
+    excused: {
+      background:
+        '#dbeafe',
+      color:
+        '#1d4ed8',
+    },
+    sick: {
+      background:
+        '#ede9fe',
+      color:
+        '#6d28d9',
+    },
+    late: {
+      background:
+        '#fef3c7',
+      color:
+        '#b45309',
+    },
+  }
+
+  return map[status]
 }
 
 
-function gradeStyle(
-  value,
+function attendanceButtonStyle(
+  status,
+  active,
 ) {
-  const grade =
-    Number(
-      value,
-    )
-
-
   return {
-    minWidth:
-      32,
-
+    width:
+      38,
     height:
-      32,
-
-    padding:
-      '0 8px',
-
+      36,
     display:
-      'inline-grid',
-
+      'grid',
     placeItems:
       'center',
-
+    flexShrink:
+      0,
+    border:
+      active
+        ? '2px solid #2563eb'
+        : '1px solid #e2e8f0',
     borderRadius:
       9,
-
-    background:
-      grade >= 5
-        ? '#dcfce7'
-        : grade >= 4
-          ? '#dbeafe'
-          : grade >= 3
-            ? '#fef3c7'
-            : '#fee2e2',
-
-    color:
-      '#1e293b',
-
+    cursor:
+      'pointer',
     fontWeight:
       900,
+    fontSize:
+      [
+        'present',
+        'absent',
+      ].includes(
+        status,
+      )
+        ? 17
+        : 9,
+    ...attendanceColors(
+      status,
+    ),
   }
 }
 
 
+function quickGradeStyle(
+  value,
+) {
+  const map = {
+    5: {
+      background:
+        '#dcfce7',
+      color:
+        '#15803d',
+    },
+    4: {
+      background:
+        '#dbeafe',
+      color:
+        '#1d4ed8',
+    },
+    3: {
+      background:
+        '#fef3c7',
+      color:
+        '#b45309',
+    },
+    2: {
+      background:
+        '#fee2e2',
+      color:
+        '#b91c1c',
+    },
+  }
+
+  return {
+    width:
+      35,
+    height:
+      35,
+    display:
+      'grid',
+    placeItems:
+      'center',
+    border:
+      '1px solid rgba(15,23,42,.06)',
+    borderRadius:
+      9,
+    cursor:
+      'pointer',
+    fontWeight:
+      900,
+    ...map[value],
+  }
+}
+
+
+function gradeBadgeStyle(
+  value,
+) {
+  return {
+    ...quickGradeStyle(
+      Number(
+        value,
+      ),
+    ),
+    width:
+      30,
+    height:
+      30,
+    cursor:
+      'default',
+  }
+}
+
+
+/* =========================================================
+   STYLES
+========================================================= */
+
 const styles = {
-  backButton: {
+  page: {
+    width:
+      '100%',
+    maxWidth:
+      'none',
+  },
+
+  back: {
     display:
       'inline-flex',
-
     alignItems:
       'center',
-
     gap:
       7,
-
     marginBottom:
       14,
-
     padding:
-      '9px 12px',
-
+      0,
     border:
-      '1px solid #dbe2ea',
-
-    borderRadius:
-      10,
-
+      'none',
     background:
-      '#ffffff',
-
+      'transparent',
     color:
-      '#334155',
-
+      '#64748b',
+    fontWeight:
+      800,
     cursor:
       'pointer',
   },
-
 
   hero: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     justifyContent:
       'space-between',
-
     gap:
       18,
-
+    marginBottom:
+      14,
+    padding:
+      20,
     flexWrap:
       'wrap',
-
-    padding:
-      22,
-
-    marginBottom:
-      18,
-
-    border:
-      '1px solid #dbeafe',
-
-    borderRadius:
-      20,
-
-    background:
-      '#f8fbff',
   },
 
-
-  heroEyebrow: {
+  eyebrow: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     gap:
-      7,
-
+      6,
     color:
       '#2563eb',
-
-    fontWeight:
-      800,
-
     fontSize:
-      11,
-
+      10,
+    fontWeight:
+      900,
     textTransform:
       'uppercase',
   },
 
+  eyebrowText: {
+    color:
+      '#2563eb',
+    fontSize:
+      9,
+    fontWeight:
+      900,
+    textTransform:
+      'uppercase',
+  },
 
   heroTitle: {
     margin:
-      '8px 0 4px',
-
+      '7px 0 0',
     color:
       '#0f274d',
   },
 
-
-  heroSubtitle: {
+  heroMeta: {
     margin:
-      0,
-
+      '6px 0 0',
     color:
-      '#64748b',
+      '#718096',
+    fontSize:
+      12,
   },
-
 
   editBadge: {
     padding:
       '8px 12px',
-
     borderRadius:
-      10,
-
+      999,
     background:
       '#dcfce7',
-
     color:
       '#166534',
-
     fontWeight:
-      800,
-
+      900,
     fontSize:
-      12,
+      10,
   },
 
-
-  readBadge: {
+  viewBadge: {
     padding:
       '8px 12px',
-
     borderRadius:
-      10,
-
+      999,
     background:
       '#f1f5f9',
-
     color:
       '#64748b',
-
     fontWeight:
-      800,
-
+      900,
     fontSize:
-      12,
+      10,
   },
 
+  error: {
+    marginBottom:
+      12,
+    padding:
+      11,
+    borderRadius:
+      11,
+    background:
+      '#fff1f2',
+    color:
+      '#be123c',
+  },
 
   success: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     gap:
-      8,
-
-    padding:
-      12,
-
+      7,
     marginBottom:
-      16,
-
-    borderRadius:
       12,
-
+    padding:
+      11,
+    borderRadius:
+      11,
     background:
-      '#dcfce7',
-
+      '#ecfdf5',
     color:
-      '#166534',
-
+      '#047857',
     fontWeight:
-      700,
+      800,
   },
 
-
-  statsGrid: {
+  stats: {
     display:
       'grid',
-
     gridTemplateColumns:
-      'repeat(auto-fit, minmax(155px, 1fr))',
-
+      'repeat(auto-fit, minmax(130px, 1fr))',
     gap:
-      12,
-
+      9,
     marginBottom:
-      18,
+      14,
   },
 
-
-  infoCard: {
+  statCard: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     gap:
-      12,
-
+      9,
     padding:
-      16,
-
+      12,
+    background:
+      '#fff',
     border:
       '1px solid #e2e8f0',
-
     borderRadius:
-      16,
-
-    background:
-      '#ffffff',
+      14,
   },
 
-
-  infoIcon: {
+  statIcon: {
     width:
-      42,
-
+      36,
     height:
-      42,
-
+      36,
     display:
       'grid',
-
     placeItems:
       'center',
-
-    flexShrink:
-      0,
-
     borderRadius:
-      12,
-
+      10,
     background:
       '#eff6ff',
-
     color:
       '#2563eb',
   },
 
-
-  infoValue: {
+  statValue: {
     display:
       'block',
-
     color:
       '#0f274d',
-
-    fontSize:
-      18,
   },
 
-
-  infoLabel: {
+  statLabel: {
     display:
       'block',
-
-    marginTop:
-      3,
-
     color:
       '#94a3b8',
+    fontSize:
+      9,
   },
-
 
   section: {
     marginBottom:
-      18,
-  },
-
-
-  sectionHeader: {
-    display:
-      'flex',
-
-    justifyContent:
-      'space-between',
-
-    alignItems:
-      'center',
-
-    gap:
-      12,
-
-    flexWrap:
-      'wrap',
-
-    marginBottom:
       14,
   },
 
-
-  sectionEyebrow: {
-    margin:
-      0,
-
-    color:
-      '#2563eb',
-
-    fontSize:
-      11,
-
-    fontWeight:
-      800,
-
-    textTransform:
-      'uppercase',
-  },
-
-
   sectionTitle: {
     margin:
-      '4px 0 0',
-
+      '4px 0 12px',
     color:
       '#0f274d',
   },
 
-
-  textarea: {
-    width:
-      '100%',
-
-    boxSizing:
-      'border-box',
-
-    resize:
-      'vertical',
-  },
-
-
-  primaryButton: {
-    display:
-      'inline-flex',
-
-    alignItems:
-      'center',
-
-    justifyContent:
-      'center',
-
-    gap:
-      7,
-
-    marginTop:
-      12,
-
-    padding:
-      '10px 14px',
-
-    border:
-      'none',
-
-    borderRadius:
-      10,
-
-    background:
-      '#2563eb',
-
-    color:
-      '#ffffff',
-
-    fontWeight:
-      800,
-
-    cursor:
-      'pointer',
-  },
-
-
-  primaryButtonSmall: {
-    padding:
-      '9px 11px',
-
-    border:
-      'none',
-
-    borderRadius:
-      9,
-
-    background:
-      '#2563eb',
-
-    color:
-      '#ffffff',
-
-    fontWeight:
-      800,
-
-    cursor:
-      'pointer',
-  },
-
-
-  secondaryButton: {
-    padding:
-      '9px 11px',
-
-    border:
-      '1px solid #bfdbfe',
-
-    borderRadius:
-      9,
-
-    background:
-      '#eff6ff',
-
-    color:
-      '#1d4ed8',
-
-    fontWeight:
-      800,
-
-    cursor:
-      'pointer',
-  },
-
-
-  readonlyBox: {
-    padding:
-      14,
-
-    borderRadius:
-      12,
-
-    background:
-      '#f8fafc',
-
-    color:
-      '#334155',
-
-    lineHeight:
-      1.6,
-  },
-
-
-  empty: {
-    padding:
-      18,
-
-    borderRadius:
-      12,
-
-    background:
-      '#f8fafc',
-
-    color:
-      '#64748b',
-  },
-
-
-  studentList: {
+  topicEditor: {
     display:
       'grid',
-
+    gridTemplateColumns:
+      'minmax(0, 1fr) auto',
     gap:
-      12,
+      9,
   },
 
-
-  studentCard: {
+  readBox: {
     padding:
-      16,
-
-    border:
-      '1px solid #e2e8f0',
-
+      11,
     borderRadius:
-      16,
-
+      10,
     background:
-      '#ffffff',
+      '#f8fafc',
   },
 
-
-  studentHeader: {
+  studentsHeader: {
     display:
       'flex',
-
-    justifyContent:
-      'space-between',
-
     alignItems:
       'center',
-
+    justifyContent:
+      'space-between',
     gap:
       12,
-
+    padding:
+      '14px 16px',
+    borderBottom:
+      '1px solid #eef2f7',
     flexWrap:
       'wrap',
+  },
 
-    paddingBottom:
-      14,
+  legend: {
+    display:
+      'flex',
+    gap:
+      8,
+    flexWrap:
+      'wrap',
+    color:
+      '#64748b',
+    fontSize:
+      9,
+  },
 
+  workTypeBar: {
+    display:
+      'flex',
+    alignItems:
+      'flex-end',
+    gap:
+      12,
+    padding:
+      '12px 16px',
+    background:
+      '#f8fafc',
+    borderBottom:
+      '1px solid #e2e8f0',
+    flexWrap:
+      'wrap',
+  },
+
+  workTypeLabel: {
+    display:
+      'grid',
+    gap:
+      5,
+    color:
+      '#334155',
+    fontSize:
+      10,
+    fontWeight:
+      800,
+  },
+
+  tableScroll: {
+    width:
+      '100%',
+    overflowX:
+      'auto',
+  },
+
+  table: {
+    width:
+      '100%',
+    minWidth:
+      850,
+    borderCollapse:
+      'separate',
+    borderSpacing:
+      0,
+  },
+
+  th: {
+    padding:
+      '9px 10px',
+    background:
+      '#f8fafc',
+    borderBottom:
+      '1px solid #e2e8f0',
+    color:
+      '#64748b',
+    textAlign:
+      'left',
+    fontSize:
+      9,
+    whiteSpace:
+      'nowrap',
+  },
+
+  td: {
+    padding:
+      '8px 10px',
     borderBottom:
       '1px solid #eef2f7',
   },
 
+  studentColumn: {
+    position:
+      'sticky',
+    left:
+      0,
+    zIndex:
+      2,
+    width:
+      210,
+    minWidth:
+      210,
+    background:
+      '#fff',
+  },
 
   studentIdentity: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     gap:
-      10,
+      8,
   },
 
-
-  avatar: {
+  number: {
     width:
-      38,
-
+      28,
     height:
-      38,
-
+      28,
     display:
       'grid',
-
     placeItems:
       'center',
-
+    flexShrink:
+      0,
     borderRadius:
-      '50%',
-
+      8,
     background:
-      '#eef5ff',
-
+      '#eff6ff',
     color:
       '#2563eb',
-
     fontWeight:
       900,
   },
 
-
   studentName: {
     display:
       'block',
-
+    maxWidth:
+      160,
+    overflow:
+      'hidden',
+    textOverflow:
+      'ellipsis',
+    whiteSpace:
+      'nowrap',
     color:
       '#0f274d',
+    fontSize:
+      11,
   },
 
-
-  studentClass: {
+  studentLogin: {
+    display:
+      'block',
     color:
       '#94a3b8',
+    fontSize:
+      7,
   },
 
-
-  gradePills: {
+  quickRow: {
     display:
       'flex',
-
     gap:
-      6,
+      4,
+    whiteSpace:
+      'nowrap',
+  },
 
+  gradeButtons: {
+    display:
+      'flex',
+    gap:
+      4,
+    whiteSpace:
+      'nowrap',
+  },
+
+  existingGrades: {
+    display:
+      'flex',
+    gap:
+      4,
     flexWrap:
       'wrap',
   },
 
-
-  gradeItem: {
+  existingGrade: {
     display:
       'flex',
-
     alignItems:
       'center',
-
     gap:
       2,
   },
 
-
-  deleteGradeButton: {
+  deleteGrade: {
     width:
-      23,
-
+      25,
     height:
-      23,
-
+      25,
     display:
       'grid',
-
     placeItems:
       'center',
-
-    padding:
-      0,
-
     border:
       'none',
-
     borderRadius:
-      6,
-
+      7,
     background:
       '#fee2e2',
-
     color:
-      '#b91c1c',
-
+      '#dc2626',
     cursor:
       'pointer',
   },
 
-
-  noGrades: {
+  muted: {
     color:
       '#94a3b8',
-
     fontSize:
-      12,
-  },
-
-
-  studentControls: {
-    display:
-      'grid',
-
-    gridTemplateColumns:
-      'repeat(auto-fit, minmax(260px, 1fr))',
-
-    gap:
-      16,
-
-    marginTop:
-      14,
-  },
-
-
-  controlBlock: {
-    display:
-      'grid',
-
-    gap:
       9,
-
-    alignContent:
-      'start',
   },
 
-
-  readonlyMini: {
-    display:
-      'grid',
-
-    gap:
-      3,
-
+  empty: {
     padding:
-      10,
-
-    borderRadius:
-      10,
-
-    background:
-      '#f8fafc',
-
+      25,
     color:
-      '#475569',
+      '#94a3b8',
+    textAlign:
+      'center',
   },
-
-
-  notMarked: {
-    display:
-      'inline-block',
-
-    padding:
-      '8px 10px',
-
-    borderRadius:
-      9,
-
-    background:
-      '#f1f5f9',
-
-    color:
-      '#64748b',
-
-    fontSize:
-      12,
-
-    fontWeight:
-      700,
-  },
-
-
-  summaryGrid: {
-    display:
-      'grid',
-
-    gridTemplateColumns:
-      'repeat(auto-fit, minmax(125px, 1fr))',
-
-    gap:
-      10,
-
-    marginBottom:
-      18,
-  },
-
-
-  miniStat: {
-    display:
-      'grid',
-
-    gap:
-      4,
-
-    padding:
-      14,
-
-    border:
-      '1px solid #e2e8f0',
-
-    borderRadius:
-      12,
-
-    background:
-      '#ffffff',
-
-    color:
-      '#334155',
-  },
-
 
   taskList: {
     display:
       'grid',
-
     gap:
-      10,
+      7,
+    marginBottom:
+      14,
   },
 
-
-  taskCard: {
+  task: {
     display:
       'flex',
-
-    justifyContent:
-      'space-between',
-
-    alignItems:
-      'flex-start',
-
     gap:
-      14,
-
-    flexWrap:
-      'wrap',
-
+      9,
     padding:
-      14,
-
+      10,
     border:
       '1px solid #e2e8f0',
-
     borderRadius:
-      12,
+      11,
+    background:
+      '#f8fbff',
+    color:
+      '#2563eb',
   },
-
 
   taskDescription: {
     margin:
-      '6px 0 0',
-
+      '4px 0',
     color:
       '#64748b',
-
-    lineHeight:
-      1.5,
+    fontSize:
+      10,
   },
-
-
-  taskDeadline: {
-    color:
-      '#64748b',
-  },
-
 
   homeworkForm: {
     display:
       'grid',
-
     gap:
-      12,
-
-    marginTop:
-      20,
-
-    paddingTop:
-      20,
-
-    borderTop:
-      '1px solid #e2e8f0',
-  },
-
-
-  homeworkOptions: {
-    display:
-      'grid',
-
-    gridTemplateColumns:
-      'repeat(auto-fit, minmax(190px, 1fr))',
-
-    gap:
-      12,
-
-    alignItems:
-      'end',
-  },
-
-
-  streakToggle: {
-    display:
-      'flex',
-
-    alignItems:
-      'center',
-
-    gap:
-      10,
-
-    minHeight:
-      46,
-
-    padding:
-      '10px 12px',
-
-    border:
-      '1px solid #dbe2ea',
-
-    borderRadius:
-      10,
-
-    background:
-      '#f8fafc',
-
-    color:
-      '#334155',
-
-    cursor:
-      'pointer',
-  },
-
-
-  taskMeta: {
-    display:
-      'flex',
-
-    alignItems:
-      'center',
-
-    justifyContent:
-      'flex-end',
-
-    gap:
-      8,
-
-    flexWrap:
-      'wrap',
-  },
-
-
-  taskReward: {
-    padding:
-      '6px 8px',
-
-    borderRadius:
-      8,
-
-    background:
-      '#eff6ff',
-
-    color:
-      '#1d4ed8',
-
-    fontWeight:
-      800,
-  },
-
-
-  taskStreakOn: {
-    padding:
-      '6px 8px',
-
-    borderRadius:
-      8,
-
-    background:
-      '#fff7ed',
-
-    color:
-      '#c2410c',
-
-    fontWeight:
-      800,
-  },
-
-
-  taskStreakOff: {
-    padding:
-      '6px 8px',
-
-    borderRadius:
-      8,
-
-    background:
-      '#f1f5f9',
-
-    color:
-      '#64748b',
-
-    fontWeight:
-      700,
-  },
-
-
-  footerInfo: {
-    display:
-      'flex',
-
-    alignItems:
-      'center',
-
-    gap:
-      7,
-
-    marginTop:
-      14,
-
-    padding:
-      12,
-
-    color:
-      '#64748b',
-
-    fontSize:
-      12,
+      9,
   },
 }
 

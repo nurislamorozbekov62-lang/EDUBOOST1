@@ -23,9 +23,7 @@ export async function createSupabaseTask(
   taskData,
   teacher,
 ) {
-  if (
-    !teacher?.id
-  ) {
+  if (!teacher?.id) {
     throw new Error(
       'Учитель не авторизован',
     )
@@ -34,48 +32,41 @@ export async function createSupabaseTask(
 
   const title =
     String(
-      taskData?.title ||
-        '',
+      taskData?.title || '',
     ).trim()
+
 
   const subject =
     String(
-      taskData?.subject ||
-        '',
+      taskData?.subject || '',
     ).trim()
+
 
   const description =
     String(
-      taskData?.description ||
-        '',
+      taskData?.description || '',
     ).trim()
 
+
   const className =
-    taskData?.className ||
-    ''
+    taskData?.className || ''
 
 
-  if (
-    !title
-  ) {
+  if (!title) {
     throw new Error(
       'Введите название задания',
     )
   }
 
 
-  if (
-    !subject
-  ) {
+  if (!subject) {
     throw new Error(
       'Выберите предмет',
     )
   }
 
 
-  if (
-    !className
-  ) {
+  if (!className) {
     throw new Error(
       'Выберите класс',
     )
@@ -98,14 +89,12 @@ export async function createSupabaseTask(
 
     reward:
       Number(
-        taskData?.reward ||
-          0,
+        taskData?.reward || 0,
       ),
 
     affects_streak:
       Boolean(
-        taskData
-          ?.affectsStreak,
+        taskData?.affectsStreak,
       ),
 
     school:
@@ -120,12 +109,10 @@ export async function createSupabaseTask(
       teacher.id,
 
     teacher_name:
-      teacher.name ||
-      '',
+      teacher.name || '',
 
     journal_lesson_id:
-      taskData
-        ?.journalLessonId ||
+      taskData?.journalLessonId ||
       null,
   }
 
@@ -136,16 +123,12 @@ export async function createSupabaseTask(
   } =
     await supabase
       .from('tasks')
-      .insert(
-        payload,
-      )
+      .insert(payload)
       .select('*')
       .single()
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось создать задание',
@@ -153,18 +136,14 @@ export async function createSupabaseTask(
   }
 
 
-  return normalizeTask(
-    data,
-  )
+  return normalizeTask(data)
 }
 
 
 export async function getSupabaseTasksForTeacher(
   teacher,
 ) {
-  if (
-    !teacher?.id
-  ) {
+  if (!teacher?.id) {
     return []
   }
 
@@ -183,15 +162,12 @@ export async function getSupabaseTasksForTeacher(
       .order(
         'created_at',
         {
-          ascending:
-            false,
+          ascending: false,
         },
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить задания',
@@ -200,8 +176,7 @@ export async function getSupabaseTasksForTeacher(
 
 
   return (
-    data ||
-    []
+    data || []
   ).map(
     normalizeTask,
   )
@@ -211,16 +186,12 @@ export async function getSupabaseTasksForTeacher(
 export async function getSupabaseTasksForStudent(
   student,
 ) {
-  if (
-    !student
-  ) {
+  if (!student) {
     return []
   }
 
 
-  if (
-    !student.className
-  ) {
+  if (!student.className) {
     return []
   }
 
@@ -236,15 +207,12 @@ export async function getSupabaseTasksForStudent(
       .order(
         'created_at',
         {
-          ascending:
-            false,
+          ascending: false,
         },
       )
 
 
-  if (
-    student.schoolId
-  ) {
+  if (student.schoolId) {
     query =
       query.eq(
         'school_id',
@@ -270,9 +238,7 @@ export async function getSupabaseTasksForStudent(
     await query
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить задания',
@@ -281,8 +247,7 @@ export async function getSupabaseTasksForStudent(
 
 
   return (
-    data ||
-    []
+    data || []
   ).map(
     normalizeTask,
   )
@@ -292,9 +257,7 @@ export async function getSupabaseTasksForStudent(
 export async function getSupabaseTasksForJournalLesson(
   journalLessonId,
 ) {
-  if (
-    !journalLessonId
-  ) {
+  if (!journalLessonId) {
     return []
   }
 
@@ -313,15 +276,12 @@ export async function getSupabaseTasksForJournalLesson(
       .order(
         'created_at',
         {
-          ascending:
-            false,
+          ascending: false,
         },
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить задания урока',
@@ -330,8 +290,7 @@ export async function getSupabaseTasksForJournalLesson(
 
 
   return (
-    data ||
-    []
+    data || []
   ).map(
     normalizeTask,
   )
@@ -341,9 +300,7 @@ export async function getSupabaseTasksForJournalLesson(
 export async function getSupabaseTaskById(
   taskId,
 ) {
-  if (
-    !taskId
-  ) {
+  if (!taskId) {
     return null
   }
 
@@ -362,9 +319,7 @@ export async function getSupabaseTaskById(
       .maybeSingle()
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить задание',
@@ -373,10 +328,76 @@ export async function getSupabaseTaskById(
 
 
   return data
-    ? normalizeTask(
-        data,
-      )
+    ? normalizeTask(data)
     : null
+}
+
+
+/* =========================================================
+   GET TASK CLASS STUDENTS
+
+   Получает ВСЕХ учеников класса,
+   которому назначено задание.
+
+   Это нужно учителю, чтобы видеть:
+   - кто сдал
+   - кто не сдал
+   - кто на проверке
+   - кто принят
+   - кто должен исправить
+
+   Доступ защищается RPC
+   get_task_class_students.
+========================================================= */
+
+export async function getTaskClassStudents(
+  taskId,
+) {
+  if (!taskId) {
+    return []
+  }
+
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.rpc(
+      'get_task_class_students',
+      {
+        target_task_id:
+          taskId,
+      },
+    )
+
+
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Не удалось загрузить учеников класса',
+    )
+  }
+
+
+  if (!Array.isArray(data)) {
+    return []
+  }
+
+
+  return data.map(
+    (student) => ({
+      id:
+        student.id,
+
+      name:
+        student.name ||
+        'Ученик',
+
+      className:
+        student.class_name ||
+        '',
+    }),
+  )
 }
 
 
@@ -384,9 +405,7 @@ export async function updateSupabaseTask(
   taskId,
   taskData,
 ) {
-  if (
-    !taskId
-  ) {
+  if (!taskId) {
     throw new Error(
       'Задание не найдено',
     )
@@ -402,8 +421,7 @@ export async function updateSupabaseTask(
   ) {
     payload.title =
       String(
-        taskData.title ||
-          '',
+        taskData.title || '',
       ).trim()
   }
 
@@ -414,8 +432,7 @@ export async function updateSupabaseTask(
   ) {
     payload.subject =
       String(
-        taskData.subject ||
-          '',
+        taskData.subject || '',
       ).trim()
   }
 
@@ -457,8 +474,7 @@ export async function updateSupabaseTask(
   ) {
     payload.reward =
       Number(
-        taskData.reward ||
-          0,
+        taskData.reward || 0,
       )
   }
 
@@ -490,9 +506,7 @@ export async function updateSupabaseTask(
   } =
     await supabase
       .from('tasks')
-      .update(
-        payload,
-      )
+      .update(payload)
       .eq(
         'id',
         taskId,
@@ -501,9 +515,7 @@ export async function updateSupabaseTask(
       .single()
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось обновить задание',
@@ -511,18 +523,14 @@ export async function updateSupabaseTask(
   }
 
 
-  return normalizeTask(
-    data,
-  )
+  return normalizeTask(data)
 }
 
 
 export async function deleteSupabaseTask(
   taskId,
 ) {
-  if (
-    !taskId
-  ) {
+  if (!taskId) {
     return
   }
 
@@ -539,9 +547,7 @@ export async function deleteSupabaseTask(
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось удалить задание',
@@ -557,9 +563,7 @@ export async function deleteSupabaseTask(
 export function validateTaskAttachment(
   file,
 ) {
-  if (
-    !file
-  ) {
+  if (!file) {
     return
   }
 
@@ -591,34 +595,26 @@ export async function uploadTaskSubmissionAttachment(
   task,
   student,
 ) {
-  if (
-    !file
-  ) {
+  if (!file) {
     return null
   }
 
 
-  if (
-    !task?.id
-  ) {
+  if (!task?.id) {
     throw new Error(
       'Не удалось определить задание',
     )
   }
 
 
-  if (
-    !student?.id
-  ) {
+  if (!student?.id) {
     throw new Error(
       'Не удалось определить ученика',
     )
   }
 
 
-  if (
-    !task?.teacherId
-  ) {
+  if (!task?.teacherId) {
     throw new Error(
       'Не удалось определить учителя задания',
     )
@@ -680,9 +676,7 @@ export async function uploadTaskSubmissionAttachment(
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить файл',
@@ -705,9 +699,7 @@ export async function uploadTaskSubmissionAttachment(
 export async function deleteTaskSubmissionAttachment(
   attachmentPath,
 ) {
-  if (
-    !attachmentPath
-  ) {
+  if (!attachmentPath) {
     return
   }
 
@@ -724,9 +716,7 @@ export async function deleteTaskSubmissionAttachment(
       ])
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось удалить файл',
@@ -747,9 +737,7 @@ export async function getTaskSubmissionAttachmentUrl(
           ?.attachmentPath
 
 
-  if (
-    !attachmentPath
-  ) {
+  if (!attachmentPath) {
     return null
   }
 
@@ -768,9 +756,7 @@ export async function getTaskSubmissionAttachmentUrl(
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось открыть файл',
@@ -815,8 +801,7 @@ export async function submitSupabaseTask(
 
   const safeReportText =
     String(
-      reportText ||
-        '',
+      reportText || '',
     ).trim()
 
 
@@ -840,9 +825,7 @@ export async function submitSupabaseTask(
   }
 
 
-  if (
-    attachmentFile
-  ) {
+  if (attachmentFile) {
     validateTaskAttachment(
       attachmentFile,
     )
@@ -864,9 +847,7 @@ export async function submitSupabaseTask(
 
 
   try {
-    if (
-      attachmentFile
-    ) {
+    if (attachmentFile) {
       uploadedAttachment =
         await uploadTaskSubmissionAttachment(
           attachmentFile,
@@ -889,9 +870,7 @@ export async function submitSupabaseTask(
       attachment:
         uploadedAttachment,
     })
-  } catch (
-    error
-  ) {
+  } catch (error) {
     if (
       uploadedAttachment?.path
     ) {
@@ -938,8 +917,7 @@ async function saveSubmission({
 
     task_reward:
       Number(
-        task.reward ||
-          0,
+        task.reward || 0,
       ),
 
     affects_streak:
@@ -954,8 +932,7 @@ async function saveSubmission({
       student.name,
 
     student_email:
-      student.email ||
-      '',
+      student.email || '',
 
     class_name:
       student.className,
@@ -1020,9 +997,7 @@ async function saveSubmission({
       .single()
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось отправить работу',
@@ -1121,9 +1096,7 @@ export async function getSupabaseSubmission(
       .maybeSingle()
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить работу',
@@ -1132,9 +1105,7 @@ export async function getSupabaseSubmission(
 
 
   return data
-    ? normalizeSubmission(
-        data,
-      )
+    ? normalizeSubmission(data)
     : null
 }
 
@@ -1142,9 +1113,7 @@ export async function getSupabaseSubmission(
 export async function getSupabaseStudentSubmissions(
   studentId,
 ) {
-  if (
-    !studentId
-  ) {
+  if (!studentId) {
     return []
   }
 
@@ -1163,15 +1132,12 @@ export async function getSupabaseStudentSubmissions(
       .order(
         'submitted_at',
         {
-          ascending:
-            false,
+          ascending: false,
         },
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить работы',
@@ -1180,8 +1146,7 @@ export async function getSupabaseStudentSubmissions(
 
 
   return (
-    data ||
-    []
+    data || []
   ).map(
     normalizeSubmission,
   )
@@ -1191,9 +1156,7 @@ export async function getSupabaseStudentSubmissions(
 export async function getSupabaseTeacherSubmissions(
   teacherId,
 ) {
-  if (
-    !teacherId
-  ) {
+  if (!teacherId) {
     return []
   }
 
@@ -1212,15 +1175,12 @@ export async function getSupabaseTeacherSubmissions(
       .order(
         'submitted_at',
         {
-          ascending:
-            false,
+          ascending: false,
         },
       )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось загрузить работы',
@@ -1229,8 +1189,7 @@ export async function getSupabaseTeacherSubmissions(
 
 
   return (
-    data ||
-    []
+    data || []
   ).map(
     normalizeSubmission,
   )
@@ -1246,9 +1205,7 @@ export async function reviewSupabaseSubmission(
   status,
   teacherComment = '',
 ) {
-  if (
-    !submissionId
-  ) {
+  if (!submissionId) {
     throw new Error(
       'Работа ученика не найдена',
     )
@@ -1291,9 +1248,7 @@ export async function reviewSupabaseSubmission(
     )
 
 
-  if (
-    error
-  ) {
+  if (error) {
     throw new Error(
       error.message ||
         'Не удалось проверить работу',
@@ -1335,8 +1290,7 @@ function normalizeTask(
 
     reward:
       Number(
-        task.reward ||
-          0,
+        task.reward || 0,
       ),
 
     affectsStreak:
@@ -1489,16 +1443,13 @@ function getFileExtension(
 ) {
   const match =
     String(
-      fileName ||
-        '',
+      fileName || '',
     ).match(
       /(\.[a-zA-Z0-9]+)$/,
     )
 
 
-  if (
-    match?.[1]
-  ) {
+  if (match?.[1]) {
     return match[1]
       .toLowerCase()
   }

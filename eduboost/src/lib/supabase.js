@@ -20,3 +20,11 @@ export const supabase = createClient(
   supabaseUrl,
   supabasePublishableKey,
 )
+
+/*
+  Эти два экспорта нужны сервису чата
+  для XHR-загрузки файлов с прогрессом.
+  Обычный supabase.storage.upload() прогресс не отдаёт.
+*/
+
+export { supabaseUrl, supabasePublishableKey }

@@ -5,35 +5,24 @@ import {
 
 export const ATTENDANCE_STATUSES = [
   {
-    value:
-      'present',
-
-    label:
-      'Присутствовал',
+    value: 'present',
+    label: 'Присутствовал',
   },
-
   {
-    value:
-      'absent',
-
-    label:
-      'Отсутствовал',
+    value: 'absent',
+    label: 'Отсутствовал',
   },
-
   {
-    value:
-      'late',
-
-    label:
-      'Опоздал',
+    value: 'late',
+    label: 'Опоздал',
   },
-
   {
-    value:
-      'excused',
-
-    label:
-      'Уважительная причина',
+    value: 'excused',
+    label: 'Уважительная причина',
+  },
+  {
+    value: 'sick',
+    label: 'Болел',
   },
 ]
 

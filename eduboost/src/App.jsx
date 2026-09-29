@@ -10,12 +10,25 @@ import {
   useAuth,
 } from './context/AuthContext'
 
+import {
+  LanguageProvider,
+} from './context/LanguageContext'
+
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 
 import {
   ROLES,
 } from './config/access'
+
+
+/* ========================================
+   AUTH
+======================================== */
+
+import LoginPage from './pages/LoginPage'
+import ActivateStudentPage from './pages/ActivateStudentPage'
+import ActivateStaffPage from './pages/ActivateStaffPage'
 
 
 /* ========================================
@@ -29,13 +42,11 @@ import CouponPage from './pages/CouponPage'
 import DashboardPage from './pages/DashboardPage'
 import LessonPage from './pages/LessonPage'
 import SchoolLessonPage from './pages/SchoolLessonPage'
-import LoginPage from './pages/LoginPage'
 import MessagesPage from './pages/MessagesPage'
 import MyCouponsPage from './pages/MyCouponsPage'
 import NotificationsPage from './pages/NotificationsPage'
 import ProfilePage from './pages/ProfilePage'
 import RankingPage from './pages/RankingPage'
-import RegisterPage from './pages/RegisterPage'
 import RewardsStorePage from './pages/RewardsStorePage'
 import StudentCoursesPage from './pages/StudentCoursesPage'
 import StudentJournalPage from './pages/StudentJournalPage'
@@ -79,12 +90,18 @@ import PartnerRewardsPage from './pages/PartnerRewardsPage'
 ======================================== */
 
 import AdministrationDashboardPage from './pages/AdministrationDashboardPage'
+
+import AdminUsersPage from './pages/AdminUsersPage'
+import AdminStaffPage from './pages/AdminStaffPage'
+import AdminClassesPage from './pages/AdminClassesPage'
+import AdminSchoolYearPage from './pages/AdminSchoolYearPage'
 import AdminSchedulePage from './pages/AdminSchedulePage'
 import AdminWorkloadPage from './pages/AdminWorkloadPage'
 import AdminSubstitutionsPage from './pages/AdminSubstitutionsPage'
 import AdminJournalsPage from './pages/AdminJournalsPage'
 import AdminAttendancePage from './pages/AdminAttendancePage'
 import AdminReportsPage from './pages/AdminReportsPage'
+
 import DirectorDashboardPage from './pages/DirectorDashboardPage'
 
 
@@ -103,6 +120,7 @@ function RequireRoles({
     user,
   } = useAuth()
 
+
   if (!user) {
     return (
       <Navigate
@@ -111,6 +129,7 @@ function RequireRoles({
       />
     )
   }
+
 
   if (
     !roles.includes(
@@ -125,6 +144,7 @@ function RequireRoles({
     )
   }
 
+
   return children
 }
 
@@ -137,6 +157,7 @@ function RoleDashboard() {
   const {
     user,
   } = useAuth()
+
 
   if (!user) {
     return (
@@ -221,6 +242,7 @@ function TasksByRole() {
     user,
   } = useAuth()
 
+
   if (!user) {
     return (
       <Navigate
@@ -271,6 +293,7 @@ function CoursesByRole() {
     user,
   } = useAuth()
 
+
   if (!user) {
     return (
       <Navigate
@@ -319,6 +342,7 @@ function AttendanceByRole() {
     user,
   } = useAuth()
 
+
   if (!user) {
     return (
       <Navigate
@@ -363,16 +387,16 @@ function AttendanceByRole() {
 
 
 /* ========================================
-   APP ROUTES
+   ROUTES
 ======================================== */
 
 function AppRoutes() {
   return (
     <Routes>
 
-      {/* =================================
-          AUTH
-      ================================= */}
+      {/* ========================================
+          PUBLIC
+      ======================================== */}
 
       <Route
         path="/login"
@@ -381,17 +405,43 @@ function AppRoutes() {
         }
       />
 
+
+      {/* STUDENT FIRST LOGIN */}
+
       <Route
-        path="/register"
+        path="/activate"
         element={
-          <RegisterPage />
+          <ActivateStudentPage />
         }
       />
 
 
-      {/* =================================
+      {/* STAFF FIRST LOGIN */}
+
+      <Route
+        path="/staff-activate"
+        element={
+          <ActivateStaffPage />
+        }
+      />
+
+
+      {/* PUBLIC REGISTRATION DISABLED */}
+
+      <Route
+        path="/register"
+        element={
+          <Navigate
+            to="/login"
+            replace
+          />
+        }
+      />
+
+
+      {/* ========================================
           PROTECTED
-      ================================= */}
+      ======================================== */}
 
       <Route
         element={
@@ -411,9 +461,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             COMMON
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="profile"
@@ -422,6 +472,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="notifications"
           element={
@@ -429,12 +480,14 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="messages"
           element={
             <MessagesPage />
           }
         />
+
 
         <Route
           path="tasks"
@@ -444,9 +497,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             SCHOOL LESSON
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="school-lessons/:lessonId"
@@ -464,9 +517,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             STUDENT
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="schedule"
@@ -482,6 +535,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="my-journal"
           element={
@@ -494,6 +548,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="tests"
@@ -508,6 +563,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="tests/:testId"
           element={
@@ -520,6 +576,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="achievements"
@@ -535,6 +592,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="ranking"
           element={
@@ -547,6 +605,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="store"
@@ -562,9 +621,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             PARENT
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="parent-tasks"
@@ -579,6 +638,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="parent-grades"
           element={
@@ -591,6 +651,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="quarter-grades"
@@ -605,6 +666,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="attendance"
           element={
@@ -613,9 +675,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             TEACHER
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="teacher-schedule"
@@ -630,6 +692,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="journal"
           element={
@@ -643,6 +706,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="teacher-tests"
           element={
@@ -655,6 +719,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="teacher-courses"
@@ -670,9 +735,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             CLASSES
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="classes"
@@ -689,9 +754,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             COURSES
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="courses"
@@ -699,6 +764,7 @@ function AppRoutes() {
             <CoursesByRole />
           }
         />
+
 
         <Route
           path="courses/:courseId"
@@ -713,6 +779,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="courses/:courseId/lessons/:lessonId"
@@ -729,9 +796,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             REWARDS
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="partner-rewards"
@@ -746,6 +813,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="my-coupons"
           element={
@@ -758,6 +826,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="coupons/:couponId"
@@ -773,9 +842,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             PARTNER
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="partner-dashboard"
@@ -790,6 +859,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="partner-offers"
           element={
@@ -801,11 +871,12 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="Партнёр EduBoost"
                 title="Предложения"
-                text="Здесь партнёр сможет создавать и редактировать скидки, подарки и специальные предложения."
+                text="Создание и редактирование скидок, подарков и специальных предложений."
               />
             </RequireRoles>
           }
         />
+
 
         <Route
           path="partner-coupons"
@@ -818,11 +889,12 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="Партнёр EduBoost"
                 title="Использование купонов"
-                text="Здесь появится проверка QR-кодов и история погашенных купонов."
+                text="Проверка QR-кодов и история использования купонов."
               />
             </RequireRoles>
           }
         />
+
 
         <Route
           path="partner-stats"
@@ -835,16 +907,16 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="Партнёр EduBoost"
                 title="Статистика"
-                text="Показы, выдачи купонов, погашения и эффективность предложений."
+                text="Показы, купоны, погашения и эффективность предложений."
               />
             </RequireRoles>
           }
         />
 
 
-        {/* =================================
+        {/* ========================================
             SCHOOL ADMIN
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="admin/users"
@@ -854,14 +926,26 @@ function AppRoutes() {
                 ROLES.SCHOOL_ADMIN,
               ]}
             >
-              <AdminPlaceholder
-                eyebrow="Администрирование"
-                title="Пользователи школы"
-                text="Ученики, родители, аккаунты и управление доступом."
-              />
+              <AdminUsersPage />
             </RequireRoles>
           }
         />
+
+
+        <Route
+          path="admin/staff"
+          element={
+            <RequireRoles
+              roles={[
+                ROLES.SCHOOL_ADMIN,
+                ROLES.DIRECTOR,
+              ]}
+            >
+              <AdminStaffPage />
+            </RequireRoles>
+          }
+        />
+
 
         <Route
           path="admin/classes"
@@ -873,32 +957,11 @@ function AppRoutes() {
                 ROLES.DIRECTOR,
               ]}
             >
-              <AdminPlaceholder
-                eyebrow="Структура школы"
-                title="Классы"
-                text="Классы, состав учеников, классные руководители и подгруппы."
-              />
+              <AdminClassesPage />
             </RequireRoles>
           }
         />
 
-        <Route
-          path="admin/staff"
-          element={
-            <RequireRoles
-              roles={[
-                ROLES.SCHOOL_ADMIN,
-                ROLES.DIRECTOR,
-              ]}
-            >
-              <AdminPlaceholder
-                eyebrow="Школа"
-                title="Сотрудники"
-                text="Учителя, руководство и другие сотрудники школы."
-              />
-            </RequireRoles>
-          }
-        />
 
         <Route
           path="admin/school-year"
@@ -906,16 +969,21 @@ function AppRoutes() {
             <RequireRoles
               roles={[
                 ROLES.SCHOOL_ADMIN,
+                ROLES.VICE_PRINCIPAL,
+                ROLES.DIRECTOR,
               ]}
             >
-              <AdminPlaceholder
-                eyebrow="Настройки"
-                title="Учебный год"
-                text="Четверти, учебные периоды, каникулы и календарь школы."
-              />
+              <AdminSchoolYearPage />
             </RequireRoles>
           }
         />
+
+
+        {/* ========================================
+            ADMIN: IMPORT
+            Возвращено к заглушке.
+            Импорт учеников доступен на admin/users.
+        ======================================== */}
 
         <Route
           path="admin/import"
@@ -928,11 +996,12 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="Данные школы"
                 title="Импорт данных"
-                text="Массовая загрузка учеников, сотрудников и классов."
+                text="Массовая загрузка учеников доступна в разделе «Пользователи»."
               />
             </RequireRoles>
           }
         />
+
 
         <Route
           path="admin/export"
@@ -951,6 +1020,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="admin/settings"
           element={
@@ -962,16 +1032,16 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="Администрирование"
                 title="Настройки школы"
-                text="Основные параметры и конфигурация школы."
+                text="Основные параметры школы."
               />
             </RequireRoles>
           }
         />
 
 
-        {/* =================================
-            VICE PRINCIPAL / DIRECTOR
-        ================================= */}
+        {/* ========================================
+            LEADERSHIP
+        ======================================== */}
 
         <Route
           path="admin/schedule"
@@ -987,6 +1057,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="admin/workload"
           element={
@@ -1000,6 +1071,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="admin/substitutions"
@@ -1015,6 +1087,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="admin/journals"
           element={
@@ -1029,6 +1102,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="admin/attendance"
           element={
@@ -1042,6 +1116,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="admin/reports"
@@ -1058,9 +1133,7 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
-            DIRECTOR ONLY
-        ================================= */}
+        {/* DIRECTOR */}
 
         <Route
           path="admin/analytics"
@@ -1076,9 +1149,9 @@ function AppRoutes() {
         />
 
 
-        {/* =================================
+        {/* ========================================
             SUPER ADMIN
-        ================================= */}
+        ======================================== */}
 
         <Route
           path="super-admin"
@@ -1097,6 +1170,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="super-admin/schools"
           element={
@@ -1108,11 +1182,12 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="EduBoost"
                 title="Школы"
-                text="Подключённые школы и управление их аккаунтами."
+                text="Подключённые школы и управление аккаунтами."
               />
             </RequireRoles>
           }
         />
+
 
         <Route
           path="super-admin/users"
@@ -1131,6 +1206,7 @@ function AppRoutes() {
           }
         />
 
+
         <Route
           path="super-admin/analytics"
           element={
@@ -1142,11 +1218,12 @@ function AppRoutes() {
               <AdminPlaceholder
                 eyebrow="EduBoost"
                 title="Аналитика платформы"
-                text="Статистика школ и использования EduBoost."
+                text="Статистика использования EduBoost."
               />
             </RequireRoles>
           }
         />
+
 
         <Route
           path="super-admin/partners"
@@ -1164,6 +1241,7 @@ function AppRoutes() {
             </RequireRoles>
           }
         />
+
 
         <Route
           path="super-admin/settings"
@@ -1185,9 +1263,9 @@ function AppRoutes() {
       </Route>
 
 
-      {/* =================================
+      {/* ========================================
           FALLBACK
-      ================================= */}
+      ======================================== */}
 
       <Route
         path="*"
@@ -1241,6 +1319,7 @@ function AdminPlaceholder({
           {eyebrow}
         </p>
 
+
         <h1
           style={{
             margin:
@@ -1252,6 +1331,7 @@ function AdminPlaceholder({
         >
           {title}
         </h1>
+
 
         <p
           style={{
@@ -1281,7 +1361,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <LanguageProvider>
+          <AppRoutes />
+        </LanguageProvider>
       </AuthProvider>
     </BrowserRouter>
   )

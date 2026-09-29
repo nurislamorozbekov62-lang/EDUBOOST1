@@ -6,13 +6,13 @@ import {
 
 import {
   AlertTriangle,
-  BarChart3,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Download,
   GraduationCap,
   RefreshCcw,
-  TrendingUp,
+  ShieldAlert,
   Users,
 } from 'lucide-react'
 
@@ -46,6 +46,10 @@ import {
 } from '../services/supabaseAdminJournalService'
 
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const SUBJECTS = [
   'Математика',
   'Русский язык',
@@ -62,35 +66,207 @@ const SUBJECTS = [
 ]
 
 
+const MIN_GRADES_FOR_STATUS = 3
+
+
+const REPORT_STATUSES = {
+  NO_DATA: {
+    key: 'no_data',
+    label: '—',
+    title:
+      'Недостаточно данных для определения статуса.',
+  },
+
+  NORMAL: {
+    key: 'normal',
+    label: 'Норма',
+    title:
+      'По доступным данным всё в норме.',
+  },
+
+  ATTENTION: {
+    key: 'attention',
+    label: 'Вним.',
+    title:
+      'Есть показатели, на которые стоит обратить внимание.',
+  },
+
+  RISK: {
+    key: 'risk',
+    label: 'Риск',
+    title:
+      'Есть серьёзная проблема, требующая внимания.',
+  },
+}
+
+
+/* =========================================================
+   STATUS
+========================================================= */
+
+function getReportStatus({
+  gradeCount,
+  finalGrade,
+  resultGrade,
+  attendanceCount,
+  absent,
+}) {
+  const hasFinalGrade =
+    finalGrade !== null &&
+    finalGrade !== undefined
+
+
+  const hasEnoughGrades =
+    hasFinalGrade ||
+    Number(gradeCount) >=
+      MIN_GRADES_FOR_STATUS
+
+
+  const hasAttendanceData =
+    Number(attendanceCount) > 0
+
+
+  const unexcusedAbsences =
+    Number(
+      absent || 0,
+    )
+
+
+  const numericGrade =
+    resultGrade !== null &&
+    resultGrade !== undefined
+      ? Number(
+          resultGrade,
+        )
+      : null
+
+
+  /*
+   * РИСК
+   *
+   * Подтверждённый учебный
+   * результат 2.
+   */
+
+  if (
+    hasEnoughGrades &&
+    Number.isFinite(
+      numericGrade,
+    ) &&
+    numericGrade <= 2
+  ) {
+    return REPORT_STATUSES.RISK
+  }
+
+
+  /*
+   * ВНИМАНИЕ
+   *
+   * Есть хотя бы один
+   * неуважительный пропуск.
+   */
+
+  if (
+    hasAttendanceData &&
+    unexcusedAbsences > 0
+  ) {
+    return REPORT_STATUSES.ATTENTION
+  }
+
+
+  /*
+   * ВНИМАНИЕ
+   *
+   * Учебный результат = 3.
+   */
+
+  if (
+    hasEnoughGrades &&
+    Number.isFinite(
+      numericGrade,
+    ) &&
+    numericGrade === 3
+  ) {
+    return REPORT_STATUSES.ATTENTION
+  }
+
+
+  /*
+   * НОРМА
+   *
+   * Достаточно данных,
+   * результат 4–5,
+   * нет неуважительных пропусков.
+   */
+
+  if (
+    hasEnoughGrades &&
+    hasAttendanceData &&
+    Number.isFinite(
+      numericGrade,
+    ) &&
+    numericGrade >= 4
+  ) {
+    return REPORT_STATUSES.NORMAL
+  }
+
+
+  /*
+   * Если информации мало,
+   * система не делает вывод.
+   */
+
+  return REPORT_STATUSES.NO_DATA
+}
+
+
+/* =========================================================
+   DATE
+========================================================= */
+
 function getLocalDate(
   daysOffset = 0,
 ) {
   const date =
     new Date()
 
+
   date.setDate(
     date.getDate() +
       daysOffset,
   )
 
-  const local =
+
+  const localDate =
     new Date(
       date.getTime() -
         date.getTimezoneOffset() *
           60000,
     )
 
-  return local
+
+  return localDate
     .toISOString()
-    .slice(0, 10)
+    .slice(
+      0,
+      10,
+    )
 }
 
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 function AdminReportsPage() {
   const {
     user,
   } = useAuth()
 
+
+  /* =======================================================
+     STATE
+  ======================================================= */
 
   const [
     classes,
@@ -145,7 +321,9 @@ function AdminReportsPage() {
   const [
     selectedTeacherId,
     setSelectedTeacherId,
-  ] = useState('all')
+  ] = useState(
+    'all',
+  )
 
 
   const [
@@ -194,6 +372,10 @@ function AdminReportsPage() {
   ] = useState('')
 
 
+  /* =======================================================
+     ACCESS
+  ======================================================= */
+
   const allowed =
     user?.role ===
       ROLES.VICE_PRINCIPAL ||
@@ -201,9 +383,9 @@ function AdminReportsPage() {
       ROLES.DIRECTOR
 
 
-  /* ========================================
+  /* =======================================================
      BASE DATA
-  ======================================== */
+  ======================================================= */
 
   useEffect(() => {
     if (
@@ -212,6 +394,7 @@ function AdminReportsPage() {
     ) {
       return
     }
+
 
     void loadBaseData()
   }, [
@@ -223,8 +406,12 @@ function AdminReportsPage() {
 
   async function loadBaseData() {
     try {
-      setBaseLoading(true)
+      setBaseLoading(
+        true,
+      )
+
       setError('')
+
 
       const [
         classRows,
@@ -261,13 +448,16 @@ function AdminReportsPage() {
         safeClasses,
       )
 
+
       setTeachers(
         safeTeachers,
       )
 
 
       setSelectedClass(
-        (current) => {
+        (
+          current,
+        ) => {
           if (
             current &&
             safeClasses.includes(
@@ -276,6 +466,7 @@ function AdminReportsPage() {
           ) {
             return current
           }
+
 
           return (
             safeClasses[0] ||
@@ -291,22 +482,26 @@ function AdminReportsPage() {
         loadError,
       )
 
+
       setClasses([])
       setTeachers([])
+
 
       setError(
         loadError?.message ||
           'Не удалось загрузить данные школы.',
       )
     } finally {
-      setBaseLoading(false)
+      setBaseLoading(
+        false,
+      )
     }
   }
 
 
-  /* ========================================
+  /* =======================================================
      STUDENTS
-  ======================================== */
+  ======================================================= */
 
   useEffect(() => {
     if (
@@ -317,6 +512,7 @@ function AdminReportsPage() {
       setStudents([])
       return
     }
+
 
     void loadStudents()
   }, [
@@ -334,8 +530,11 @@ function AdminReportsPage() {
           selectedClass,
         )
 
+
       setStudents(
-        Array.isArray(rows)
+        Array.isArray(
+          rows,
+        )
           ? rows
           : [],
       )
@@ -347,7 +546,9 @@ function AdminReportsPage() {
         loadError,
       )
 
+
       setStudents([])
+
 
       setError(
         loadError?.message ||
@@ -357,9 +558,9 @@ function AdminReportsPage() {
   }
 
 
-  /* ========================================
+  /* =======================================================
      REPORT DATA
-  ======================================== */
+  ======================================================= */
 
   useEffect(() => {
     if (
@@ -372,6 +573,7 @@ function AdminReportsPage() {
     ) {
       return
     }
+
 
     void loadReport()
   }, [
@@ -387,8 +589,12 @@ function AdminReportsPage() {
 
   async function loadReport() {
     try {
-      setReportLoading(true)
+      setReportLoading(
+        true,
+      )
+
       setError('')
+
 
       const [
         gradeRows,
@@ -474,23 +680,27 @@ function AdminReportsPage() {
         loadError,
       )
 
+
       setGrades([])
       setQuarterGrades([])
       setAttendance([])
+
 
       setError(
         loadError?.message ||
           'Не удалось сформировать отчёт.',
       )
     } finally {
-      setReportLoading(false)
+      setReportLoading(
+        false,
+      )
     }
   }
 
 
-  /* ========================================
-     TEACHER
-  ======================================== */
+  /* =======================================================
+     SELECTED TEACHER
+  ======================================================= */
 
   const selectedTeacher =
     useMemo(() => {
@@ -501,9 +711,12 @@ function AdminReportsPage() {
         return null
       }
 
+
       return (
         teachers.find(
-          (teacher) =>
+          (
+            teacher,
+          ) =>
             String(
               teacher.id,
             ) ===
@@ -519,6 +732,10 @@ function AdminReportsPage() {
     ])
 
 
+  /* =======================================================
+     TEACHER FILTER
+  ======================================================= */
+
   function matchesTeacher(
     item,
   ) {
@@ -528,6 +745,7 @@ function AdminReportsPage() {
     ) {
       return true
     }
+
 
     if (
       String(
@@ -542,6 +760,7 @@ function AdminReportsPage() {
       return true
     }
 
+
     if (
       item?.teacherName &&
       selectedTeacher?.name
@@ -555,6 +774,7 @@ function AdminReportsPage() {
         )
       )
     }
+
 
     return false
   }
@@ -602,17 +822,25 @@ function AdminReportsPage() {
     )
 
 
-  /* ========================================
+  /* =======================================================
      STUDENT REPORT ROWS
-  ======================================== */
+  ======================================================= */
 
   const reportRows =
     useMemo(() => {
       return students.map(
-        (student) => {
+        (
+          student,
+        ) => {
+          /* -----------------------
+             GRADES
+          ----------------------- */
+
           const studentGrades =
             filteredGrades.filter(
-              (grade) =>
+              (
+                grade,
+              ) =>
                 String(
                   grade.studentId,
                 ) ===
@@ -630,7 +858,9 @@ function AdminReportsPage() {
 
           const finalRow =
             filteredQuarterGrades.find(
-              (item) =>
+              (
+                item,
+              ) =>
                 String(
                   item.studentId,
                 ) ===
@@ -646,10 +876,8 @@ function AdminReportsPage() {
 
 
           const predictedGrade =
-            average !==
-              null &&
-            average !==
-              undefined
+            average !== null &&
+            average !== undefined
               ? getSuggestedQuarterGrade(
                   average,
                 )
@@ -661,9 +889,15 @@ function AdminReportsPage() {
             predictedGrade
 
 
+          /* -----------------------
+             ATTENDANCE
+          ----------------------- */
+
           const studentAttendance =
             filteredAttendance.filter(
-              (record) =>
+              (
+                record,
+              ) =>
                 String(
                   record.studentId,
                 ) ===
@@ -679,21 +913,70 @@ function AdminReportsPage() {
             )
 
 
+          const attendanceCount =
+            studentAttendance.length
+
+
+          const present =
+            attendanceCount > 0
+              ? Number(
+                  attendanceStats.present ??
+                    0,
+                )
+              : null
+
+
+          const absent =
+            attendanceCount > 0
+              ? Number(
+                  attendanceStats.absent ??
+                    0,
+                )
+              : null
+
+
+          const late =
+            attendanceCount > 0
+              ? Number(
+                  attendanceStats.late ??
+                    0,
+                )
+              : null
+
+
+          const excused =
+            attendanceCount > 0
+              ? Number(
+                  attendanceStats.excused ??
+                    0,
+                )
+              : null
+
+
+          /* -----------------------
+             STATUS
+          ----------------------- */
+
+          const status =
+            getReportStatus({
+              gradeCount:
+                studentGrades.length,
+
+              finalGrade,
+
+              resultGrade,
+
+              attendanceCount,
+
+              absent,
+            })
+
+
           const requiresAttention =
-            (
-              resultGrade !==
-                null &&
-              Number(
-                resultGrade,
-              ) <= 2
-            ) ||
-            (
-              studentAttendance.length >
-                0 &&
-              Number(
-                attendanceStats.percent,
-              ) < 80
-            )
+            status.key ===
+              'attention' ||
+            status.key ===
+              'risk'
 
 
           return {
@@ -710,28 +993,17 @@ function AdminReportsPage() {
 
             resultGrade,
 
-            attendanceCount:
-              studentAttendance.length,
+            attendanceCount,
 
-            attendancePercent:
-              attendanceStats.percent ||
-              0,
+            present,
 
-            present:
-              attendanceStats.present ||
-              0,
+            absent,
 
-            absent:
-              attendanceStats.absent ||
-              0,
+            late,
 
-            late:
-              attendanceStats.late ||
-              0,
+            excused,
 
-            excused:
-              attendanceStats.excused ||
-              0,
+            status,
 
             requiresAttention,
           }
@@ -745,9 +1017,9 @@ function AdminReportsPage() {
     ])
 
 
-  /* ========================================
+  /* =======================================================
      SEARCH
-  ======================================== */
+  ======================================================= */
 
   const visibleRows =
     useMemo(() => {
@@ -756,12 +1028,16 @@ function AdminReportsPage() {
           .trim()
           .toLowerCase()
 
+
       if (!value) {
         return reportRows
       }
 
+
       return reportRows.filter(
-        (row) =>
+        (
+          row,
+        ) =>
           String(
             row.student?.name ||
               '',
@@ -777,117 +1053,162 @@ function AdminReportsPage() {
     ])
 
 
-  /* ========================================
-     SUMMARY
-  ======================================== */
+  /* =======================================================
+     SUMMARY — COUNTS ONLY
+  ======================================================= */
 
   const summary =
     useMemo(() => {
-      const averages =
-        reportRows
-          .map(
-            (row) =>
-              Number(
-                row.average,
-              ),
-          )
-          .filter(
-            (value) =>
-              Number.isFinite(
-                value,
-              ),
-          )
+      /*
+       * Количество всех оценок
+       * текущих официальных учеников.
+       */
 
-
-      const averageGrade =
-        averages.length > 0
-          ? (
-              averages.reduce(
-                (
-                  total,
-                  value,
-                ) =>
-                  total +
-                  value,
-                0,
-              ) /
-              averages.length
-            ).toFixed(2)
-          : '—'
-
-
-      const attestedRows =
-        reportRows.filter(
-          (row) =>
-            row.resultGrade !==
-              null &&
-            row.resultGrade !==
-              undefined,
-        )
-
-
-      const qualityRows =
-        attestedRows.filter(
-          (row) =>
+      const totalGrades =
+        reportRows.reduce(
+          (
+            total,
+            row,
+          ) =>
+            total +
             Number(
-              row.resultGrade,
-            ) >= 4,
+              row.gradeCount ||
+                0,
+            ),
+          0,
         )
 
 
-      const qualityPercent =
-        attestedRows.length > 0
-          ? Math.round(
-              (
-                qualityRows.length /
-                attestedRows.length
-              ) *
-                100,
-            )
-          : 0
+      /*
+       * Используем посещаемость
+       * только текущих учеников.
+       */
 
-
-      const attendanceStats =
-        calculateSupabaseAttendanceStats(
-          filteredAttendance,
+      const rowsWithAttendance =
+        reportRows.filter(
+          (
+            row,
+          ) =>
+            Number(
+              row.attendanceCount ||
+                0,
+            ) > 0,
         )
+
+
+      const hasAttendanceData =
+        rowsWithAttendance.length >
+        0
+
+
+      const totalAbsent =
+        rowsWithAttendance.reduce(
+          (
+            total,
+            row,
+          ) =>
+            total +
+            Number(
+              row.absent ||
+                0,
+            ),
+          0,
+        )
+
+
+      const totalLate =
+        rowsWithAttendance.reduce(
+          (
+            total,
+            row,
+          ) =>
+            total +
+            Number(
+              row.late ||
+                0,
+            ),
+          0,
+        )
+
+
+      /*
+       * Сколько учеников
+       * в каждом статусе.
+       */
+
+      const normal =
+        reportRows.filter(
+          (
+            row,
+          ) =>
+            row.status?.key ===
+            'normal',
+        ).length
+
+
+      const attention =
+        reportRows.filter(
+          (
+            row,
+          ) =>
+            row.status?.key ===
+            'attention',
+        ).length
+
+
+      const risk =
+        reportRows.filter(
+          (
+            row,
+          ) =>
+            row.status?.key ===
+            'risk',
+        ).length
+
+
+      const noData =
+        reportRows.filter(
+          (
+            row,
+          ) =>
+            row.status?.key ===
+            'no_data',
+        ).length
 
 
       return {
         students:
           reportRows.length,
 
-        averageGrade,
-
-        qualityPercent,
-
-        attendancePercent:
-          attendanceStats.percent ||
-          0,
+        grades:
+          totalGrades,
 
         absent:
-          attendanceStats.absent ||
-          0,
+          hasAttendanceData
+            ? totalAbsent
+            : null,
 
         late:
-          attendanceStats.late ||
-          0,
+          hasAttendanceData
+            ? totalLate
+            : null,
 
-        attention:
-          reportRows.filter(
-            (row) =>
-              row.requiresAttention,
-          ).length,
+        normal,
+
+        attention,
+
+        risk,
+
+        noData,
       }
     }, [
       reportRows,
-      filteredAttendance,
     ])
 
 
-  /* ========================================
-     CSV EXPORT
-  ======================================== */
+  /* =======================================================
+     CSV
+  ======================================================= */
 
   function exportCsv() {
     if (
@@ -908,14 +1229,17 @@ function AdminReportsPage() {
         'Количество оценок',
         'Средний балл',
         'Итоговая оценка',
-        'Посещаемость %',
         'Пропуски',
         'Опоздания',
-        'Уважительные',
+        'Уважительные пропуски',
+        'Статус',
       ],
 
+
       ...visibleRows.map(
-        (row) => [
+        (
+          row,
+        ) => [
           row.student?.name ||
             '',
 
@@ -938,13 +1262,17 @@ function AdminReportsPage() {
             row.predictedGrade ??
             '',
 
-          row.attendancePercent,
+          row.absent ??
+            '',
 
-          row.absent,
+          row.late ??
+            '',
 
-          row.late,
+          row.excused ??
+            '',
 
-          row.excused,
+          row.status?.label ||
+            '—',
         ],
       ),
     ]
@@ -953,7 +1281,9 @@ function AdminReportsPage() {
     const csv =
       rows
         .map(
-          (row) =>
+          (
+            row,
+          ) =>
             row
               .map(
                 escapeCsv,
@@ -991,6 +1321,7 @@ function AdminReportsPage() {
     link.href =
       url
 
+
     link.download =
       `eduboost-report-${selectedClass}-${selectedSubject}-${dateTo}.csv`
 
@@ -999,9 +1330,12 @@ function AdminReportsPage() {
       link,
     )
 
+
     link.click()
 
+
     link.remove()
+
 
     URL.revokeObjectURL(
       url,
@@ -1009,9 +1343,9 @@ function AdminReportsPage() {
   }
 
 
-  /* ========================================
-     ACCESS
-  ======================================== */
+  /* =======================================================
+     ACCESS STATES
+  ======================================================= */
 
   if (!user) {
     return null
@@ -1040,14 +1374,16 @@ function AdminReportsPage() {
   }
 
 
-  /* ========================================
+  /* =======================================================
      PAGE
-  ======================================== */
+  ======================================================= */
 
   return (
     <div className="page-container">
 
-      {/* TOOLBAR */}
+      {/* ===================================================
+          TOOLBAR
+      =================================================== */}
 
       <section
         className="content-card"
@@ -1072,6 +1408,7 @@ function AdminReportsPage() {
               Аналитика школы
             </p>
 
+
             <h2
               style={
                 toolbarTitleStyle
@@ -1080,15 +1417,16 @@ function AdminReportsPage() {
               Учебный отчёт
             </h2>
 
+
             <p
               style={
                 toolbarTextStyle
               }
             >
-              Успеваемость и
+              Успеваемость,
               посещаемость
-              выбранного класса
-              в одном отчёте.
+              и статусы учеников
+              выбранного класса.
             </p>
 
           </div>
@@ -1113,11 +1451,13 @@ function AdminReportsPage() {
                 secondaryButtonStyle
               }
             >
+
               <RefreshCcw
                 size={17}
               />
 
               Обновить
+
             </button>
 
 
@@ -1134,11 +1474,13 @@ function AdminReportsPage() {
                 primaryButtonStyle
               }
             >
+
               <Download
                 size={17}
               />
 
               Скачать CSV
+
             </button>
 
           </div>
@@ -1146,17 +1488,24 @@ function AdminReportsPage() {
         </div>
 
 
+        {/* =================================================
+            FILTERS
+        ================================================= */}
+
         <div
           style={
             filtersStyle
           }
         >
 
+          {/* CLASS */}
+
           <label className="form-group">
 
             <span>
               Класс
             </span>
+
 
             <select
               value={
@@ -1185,7 +1534,9 @@ function AdminReportsPage() {
 
 
               {classes.map(
-                (className) => (
+                (
+                  className,
+                ) => (
                   <option
                     key={
                       className
@@ -1204,11 +1555,14 @@ function AdminReportsPage() {
           </label>
 
 
+          {/* SUBJECT */}
+
           <label className="form-group">
 
             <span>
               Предмет
             </span>
+
 
             <select
               value={
@@ -1224,7 +1578,9 @@ function AdminReportsPage() {
             >
 
               {SUBJECTS.map(
-                (subject) => (
+                (
+                  subject,
+                ) => (
                   <option
                     key={
                       subject
@@ -1243,11 +1599,14 @@ function AdminReportsPage() {
           </label>
 
 
+          {/* TEACHER */}
+
           <label className="form-group">
 
             <span>
               Учитель
             </span>
+
 
             <select
               value={
@@ -1268,7 +1627,9 @@ function AdminReportsPage() {
 
 
               {teachers.map(
-                (teacher) => (
+                (
+                  teacher,
+                ) => (
                   <option
                     key={
                       teacher.id
@@ -1287,11 +1648,14 @@ function AdminReportsPage() {
           </label>
 
 
+          {/* QUARTER */}
+
           <label className="form-group">
 
             <span>
               Четверть
             </span>
+
 
             <select
               value={
@@ -1329,11 +1693,14 @@ function AdminReportsPage() {
           </label>
 
 
+          {/* DATE FROM */}
+
           <label className="form-group">
 
             <span>
               Посещаемость с
             </span>
+
 
             <input
               type="date"
@@ -1355,11 +1722,14 @@ function AdminReportsPage() {
           </label>
 
 
+          {/* DATE TO */}
+
           <label className="form-group">
 
             <span>
               По
             </span>
+
 
             <input
               type="date"
@@ -1385,7 +1755,9 @@ function AdminReportsPage() {
       </section>
 
 
-      {/* ERROR */}
+      {/* ===================================================
+          ERROR
+      =================================================== */}
 
       {error && (
         <section className="content-card">
@@ -1398,7 +1770,9 @@ function AdminReportsPage() {
       )}
 
 
-      {/* SUMMARY */}
+      {/* ===================================================
+          SUMMARY
+      =================================================== */}
 
       <div
         style={
@@ -1414,6 +1788,7 @@ function AdminReportsPage() {
             summary.students
           }
           label="Учеников"
+          variant="default"
         />
 
 
@@ -1422,31 +1797,10 @@ function AdminReportsPage() {
             GraduationCap
           }
           value={
-            summary.averageGrade
+            summary.grades
           }
-          label="Средний балл"
-        />
-
-
-        <StatCard
-          icon={
-            TrendingUp
-          }
-          value={
-            `${summary.qualityPercent}%`
-          }
-          label="Качество знаний"
-        />
-
-
-        <StatCard
-          icon={
-            BarChart3
-          }
-          value={
-            `${summary.attendancePercent}%`
-          }
-          label="Посещаемость"
+          label="Оценок"
+          variant="default"
         />
 
 
@@ -1455,9 +1809,11 @@ function AdminReportsPage() {
             AlertTriangle
           }
           value={
-            summary.absent
+            summary.absent ??
+            '—'
           }
           label="Пропусков"
+          variant="default"
         />
 
 
@@ -1466,18 +1822,60 @@ function AdminReportsPage() {
             Clock3
           }
           value={
-            summary.late
+            summary.late ??
+            '—'
           }
           label="Опозданий"
+          variant="default"
+        />
+
+
+        <StatCard
+          icon={
+            CheckCircle2
+          }
+          value={
+            summary.normal
+          }
+          label="Норма"
+          variant="normal"
+        />
+
+
+        <StatCard
+          icon={
+            CalendarDays
+          }
+          value={
+            summary.attention
+          }
+          label="Вним."
+          variant="attention"
+        />
+
+
+        <StatCard
+          icon={
+            ShieldAlert
+          }
+          value={
+            summary.risk
+          }
+          label="Риск"
+          variant="risk"
         />
 
       </div>
 
 
-      {/* ATTENTION */}
+      {/* ===================================================
+          ATTENTION MESSAGE
+      =================================================== */}
 
-      {summary.attention >
-        0 && (
+      {(
+        summary.attention > 0 ||
+        summary.risk > 0
+      ) && (
         <section
           className="content-card"
           style={
@@ -1490,36 +1888,44 @@ function AdminReportsPage() {
               attentionTitleStyle
             }
           >
+
             <AlertTriangle
               size={20}
             />
+
 
             <strong>
               Требуют внимания:
               {' '}
               {
-                summary.attention
+                summary.attention +
+                summary.risk
               }
             </strong>
+
           </div>
+
 
           <p
             style={
               attentionTextStyle
             }
           >
-            В список попадают
-            ученики с оценкой 2
-            или посещаемостью
-            ниже 80% за
-            выбранный период.
+            Вним. — появилась
+            проблема, которую стоит
+            проверить. Риск —
+            обнаружена серьёзная
+            проблема, требующая
+            вмешательства.
           </p>
 
         </section>
       )}
 
 
-      {/* TABLE */}
+      {/* ===================================================
+          STUDENTS TABLE
+      =================================================== */}
 
       <section className="content-card">
 
@@ -1543,6 +1949,7 @@ function AdminReportsPage() {
               {selectedQuarter}
               {' четверть'}
             </p>
+
 
             <h2
               style={
@@ -1600,9 +2007,11 @@ function AdminReportsPage() {
               size={34}
             />
 
+
             <h3>
               Нет данных
             </h3>
+
 
             <p>
               По выбранным
@@ -1636,6 +2045,7 @@ function AdminReportsPage() {
                     Ученик
                   </th>
 
+
                   <th
                     style={
                       headerStyle
@@ -1643,6 +2053,7 @@ function AdminReportsPage() {
                   >
                     Оценок
                   </th>
+
 
                   <th
                     style={
@@ -1652,6 +2063,7 @@ function AdminReportsPage() {
                     Ср. балл
                   </th>
 
+
                   <th
                     style={
                       headerStyle
@@ -1660,13 +2072,6 @@ function AdminReportsPage() {
                     Итог
                   </th>
 
-                  <th
-                    style={
-                      headerStyle
-                    }
-                  >
-                    Посещ.
-                  </th>
 
                   <th
                     style={
@@ -1676,6 +2081,7 @@ function AdminReportsPage() {
                     Пропуски
                   </th>
 
+
                   <th
                     style={
                       headerStyle
@@ -1683,6 +2089,7 @@ function AdminReportsPage() {
                   >
                     Опоздания
                   </th>
+
 
                   <th
                     style={
@@ -1700,17 +2107,21 @@ function AdminReportsPage() {
               <tbody>
 
                 {visibleRows.map(
-                  (row) => (
+                  (
+                    row,
+                  ) => (
                     <tr
                       key={
                         row.student.id
                       }
                       style={
-                        row.requiresAttention
-                          ? attentionRowStyle
-                          : undefined
+                        getRowStyle(
+                          row.status?.key,
+                        )
                       }
                     >
+
+                      {/* STUDENT */}
 
                       <td
                         style={
@@ -1731,7 +2142,7 @@ function AdminReportsPage() {
                           >
                             {String(
                               row.student
-                                .name ||
+                                ?.name ||
                                 'У',
                             )
                               .charAt(
@@ -1746,9 +2157,10 @@ function AdminReportsPage() {
                             <strong>
                               {
                                 row.student
-                                  .name
+                                  ?.name
                               }
                             </strong>
+
 
                             <small
                               style={
@@ -1757,7 +2169,7 @@ function AdminReportsPage() {
                             >
                               {
                                 row.student
-                                  .className ||
+                                  ?.className ||
                                 selectedClass
                               }
                             </small>
@@ -1768,6 +2180,8 @@ function AdminReportsPage() {
 
                       </td>
 
+
+                      {/* GRADES COUNT */}
 
                       <td
                         style={
@@ -1780,17 +2194,23 @@ function AdminReportsPage() {
                       </td>
 
 
+                      {/* AVERAGE */}
+
                       <td
                         style={
                           bodyStyle
                         }
                       >
+
                         <strong>
                           {row.average ??
                             '—'}
                         </strong>
+
                       </td>
 
+
+                      {/* RESULT */}
 
                       <td
                         style={
@@ -1799,7 +2219,9 @@ function AdminReportsPage() {
                       >
 
                         {row.resultGrade !==
-                        null ? (
+                        null &&
+                        row.resultGrade !==
+                        undefined ? (
                           <GradeBadge
                             value={
                               row.resultGrade
@@ -1812,41 +2234,35 @@ function AdminReportsPage() {
                       </td>
 
 
+                      {/* ABSENT */}
+
                       <td
                         style={
                           bodyStyle
                         }
                       >
-
                         {row.attendanceCount >
                         0
-                          ? `${row.attendancePercent}%`
+                          ? row.absent
                           : '—'}
-
                       </td>
 
+
+                      {/* LATE */}
 
                       <td
                         style={
                           bodyStyle
                         }
                       >
-                        {
-                          row.absent
-                        }
+                        {row.attendanceCount >
+                        0
+                          ? row.late
+                          : '—'}
                       </td>
 
 
-                      <td
-                        style={
-                          bodyStyle
-                        }
-                      >
-                        {
-                          row.late
-                        }
-                      </td>
-
+                      {/* STATUS */}
 
                       <td
                         style={
@@ -1854,23 +2270,11 @@ function AdminReportsPage() {
                         }
                       >
 
-                        {row.requiresAttention ? (
-                          <span
-                            style={
-                              warningBadgeStyle
-                            }
-                          >
-                            Внимание
-                          </span>
-                        ) : (
-                          <span
-                            style={
-                              normalBadgeStyle
-                            }
-                          >
-                            Норма
-                          </span>
-                        )}
+                        <StatusBadge
+                          status={
+                            row.status
+                          }
+                        />
 
                       </td>
 
@@ -1892,42 +2296,55 @@ function AdminReportsPage() {
 }
 
 
-/* ========================================
-   COMPONENTS
-======================================== */
+/* =========================================================
+   STAT CARD
+========================================================= */
 
 function StatCard({
   icon: Icon,
   value,
   label,
+  variant = 'default',
 }) {
+  const variantStyle =
+    getStatVariantStyle(
+      variant,
+    )
+
+
   return (
     <div
-      style={
-        statCardStyle
-      }
+      style={{
+        ...statCardStyle,
+        ...variantStyle.card,
+      }}
     >
 
       <div
-        style={
-          statIconStyle
-        }
+        style={{
+          ...statIconStyle,
+          ...variantStyle.icon,
+        }}
       >
+
         <Icon
           size={21}
         />
+
       </div>
 
 
       <div>
 
         <strong
-          style={
-            statValueStyle
-          }
+          style={{
+            ...statValueStyle,
+            ...variantStyle.value,
+          }}
         >
           {value}
         </strong>
+
 
         <div
           style={
@@ -1944,32 +2361,146 @@ function StatCard({
 }
 
 
+/* =========================================================
+   STATUS BADGE
+========================================================= */
+
+function StatusBadge({
+  status,
+}) {
+  const safeStatus =
+    status ||
+    REPORT_STATUSES.NO_DATA
+
+
+  if (
+    safeStatus.key ===
+    'no_data'
+  ) {
+    return (
+      <span
+        title={
+          safeStatus.title
+        }
+        style={
+          noDataBadgeStyle
+        }
+      >
+        —
+      </span>
+    )
+  }
+
+
+  if (
+    safeStatus.key ===
+    'normal'
+  ) {
+    return (
+      <span
+        title={
+          safeStatus.title
+        }
+        style={
+          normalBadgeStyle
+        }
+      >
+        Норма
+      </span>
+    )
+  }
+
+
+  if (
+    safeStatus.key ===
+    'attention'
+  ) {
+    return (
+      <span
+        title={
+          safeStatus.title
+        }
+        style={
+          attentionBadgeStyle
+        }
+      >
+        Вним.
+      </span>
+    )
+  }
+
+
+  return (
+    <span
+      title={
+        safeStatus.title
+      }
+      style={
+        riskBadgeStyle
+      }
+    >
+      Риск
+    </span>
+  )
+}
+
+
+/* =========================================================
+   GRADE BADGE
+========================================================= */
+
 function GradeBadge({
   value,
 }) {
   const numeric =
-    Number(value)
+    Number(
+      value,
+    )
+
+
+  let background =
+    '#fee2e2'
+
+
+  let color =
+    '#991b1b'
+
+
+  if (
+    numeric >= 5
+  ) {
+    background =
+      '#dcfce7'
+
+    color =
+      '#166534'
+  } else if (
+    numeric >= 4
+  ) {
+    background =
+      '#dbeafe'
+
+    color =
+      '#1d4ed8'
+  } else if (
+    numeric >= 3
+  ) {
+    background =
+      '#fef3c7'
+
+    color =
+      '#92400e'
+  }
+
 
   return (
     <span
       style={{
         ...gradeBadgeStyle,
 
-        background:
-          numeric >= 5
-            ? '#dcfce7'
-            : numeric >= 4
-              ? '#dbeafe'
-              : numeric >= 3
-                ? '#fef3c7'
-                : '#fee2e2',
+        background,
 
-        color:
-          numeric >= 4
-            ? '#166534'
-            : numeric >= 3
-              ? '#92400e'
-              : '#991b1b',
+        color,
       }}
     >
       {value}
@@ -1978,9 +2509,9 @@ function GradeBadge({
 }
 
 
-/* ========================================
+/* =========================================================
    HELPERS
-======================================== */
+========================================================= */
 
 function normalizeText(
   value,
@@ -2002,10 +2533,17 @@ function escapeCsv(
         '',
     )
 
+
   if (
-    stringValue.includes(';') ||
-    stringValue.includes('"') ||
-    stringValue.includes('\n')
+    stringValue.includes(
+      ';',
+    ) ||
+    stringValue.includes(
+      '"',
+    ) ||
+    stringValue.includes(
+      '\n',
+    )
   ) {
     return `"${stringValue.replace(
       /"/g,
@@ -2013,13 +2551,126 @@ function escapeCsv(
     )}"`
   }
 
+
   return stringValue
 }
 
 
-/* ========================================
+function getRowStyle(
+  statusKey,
+) {
+  if (
+    statusKey ===
+    'risk'
+  ) {
+    return riskRowStyle
+  }
+
+
+  if (
+    statusKey ===
+    'attention'
+  ) {
+    return attentionRowStyle
+  }
+
+
+  return undefined
+}
+
+
+function getStatVariantStyle(
+  variant,
+) {
+  if (
+    variant ===
+    'normal'
+  ) {
+    return {
+      card: {
+        borderColor:
+          '#bbf7d0',
+      },
+
+      icon: {
+        background:
+          '#dcfce7',
+
+        color:
+          '#15803d',
+      },
+
+      value: {
+        color:
+          '#166534',
+      },
+    }
+  }
+
+
+  if (
+    variant ===
+    'attention'
+  ) {
+    return {
+      card: {
+        borderColor:
+          '#fde68a',
+      },
+
+      icon: {
+        background:
+          '#fef3c7',
+
+        color:
+          '#b45309',
+      },
+
+      value: {
+        color:
+          '#92400e',
+      },
+    }
+  }
+
+
+  if (
+    variant ===
+    'risk'
+  ) {
+    return {
+      card: {
+        borderColor:
+          '#fecaca',
+      },
+
+      icon: {
+        background:
+          '#fee2e2',
+
+        color:
+          '#dc2626',
+      },
+
+      value: {
+        color:
+          '#991b1b',
+      },
+    }
+  }
+
+
+  return {
+    card: {},
+    icon: {},
+    value: {},
+  }
+}
+
+
+/* =========================================================
    STYLES
-======================================== */
+========================================================= */
 
 const toolbarCardStyle = {
   marginBottom:
@@ -2155,12 +2806,16 @@ const filtersStyle = {
 }
 
 
+/* =========================================================
+   STATISTICS
+========================================================= */
+
 const statsGridStyle = {
   display:
     'grid',
 
   gridTemplateColumns:
-    'repeat(auto-fit, minmax(150px, 1fr))',
+    'repeat(auto-fit, minmax(135px, 1fr))',
 
   gap:
     12,
@@ -2251,6 +2906,10 @@ const statLabelStyle = {
 }
 
 
+/* =========================================================
+   ATTENTION
+========================================================= */
+
 const attentionCardStyle = {
   marginBottom:
     18,
@@ -2287,8 +2946,15 @@ const attentionTextStyle = {
 
   fontSize:
     13,
+
+  lineHeight:
+    1.5,
 }
 
+
+/* =========================================================
+   TABLE HEADER
+========================================================= */
 
 const tableHeaderStyle = {
   display:
@@ -2350,6 +3016,10 @@ const searchInputStyle = {
 }
 
 
+/* =========================================================
+   TABLE
+========================================================= */
+
 const tableWrapperStyle = {
   width:
     '100%',
@@ -2373,7 +3043,7 @@ const tableStyle = {
     '100%',
 
   minWidth:
-    900,
+    820,
 
   borderCollapse:
     'collapse',
@@ -2438,6 +3108,10 @@ const bodyLeftStyle = {
 }
 
 
+/* =========================================================
+   STUDENT
+========================================================= */
+
 const studentStyle = {
   display:
     'flex',
@@ -2495,6 +3169,10 @@ const studentMetaStyle = {
 }
 
 
+/* =========================================================
+   GRADE
+========================================================= */
+
 const gradeBadgeStyle = {
   display:
     'inline-grid',
@@ -2516,9 +3194,22 @@ const gradeBadgeStyle = {
 }
 
 
-const warningBadgeStyle = {
+/* =========================================================
+   STATUS
+========================================================= */
+
+const statusBadgeBaseStyle = {
   display:
     'inline-flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'center',
+
+  minWidth:
+    52,
 
   padding:
     '5px 8px',
@@ -2526,22 +3217,33 @@ const warningBadgeStyle = {
   borderRadius:
     8,
 
-  background:
-    '#fee2e2',
-
-  color:
-    '#991b1b',
-
   fontSize:
     11,
 
   fontWeight:
     700,
+
+  whiteSpace:
+    'nowrap',
+}
+
+
+const noDataBadgeStyle = {
+  ...statusBadgeBaseStyle,
+
+  minWidth:
+    28,
+
+  background:
+    '#f1f5f9',
+
+  color:
+    '#64748b',
 }
 
 
 const normalBadgeStyle = {
-  ...warningBadgeStyle,
+  ...statusBadgeBaseStyle,
 
   background:
     '#dcfce7',
@@ -2551,11 +3253,47 @@ const normalBadgeStyle = {
 }
 
 
-const attentionRowStyle = {
+const attentionBadgeStyle = {
+  ...statusBadgeBaseStyle,
+
   background:
-    '#fffaf5',
+    '#fef3c7',
+
+  color:
+    '#92400e',
 }
 
+
+const riskBadgeStyle = {
+  ...statusBadgeBaseStyle,
+
+  background:
+    '#fee2e2',
+
+  color:
+    '#991b1b',
+}
+
+
+/* =========================================================
+   ROW COLORS
+========================================================= */
+
+const attentionRowStyle = {
+  background:
+    '#fffbeb',
+}
+
+
+const riskRowStyle = {
+  background:
+    '#fff7f7',
+}
+
+
+/* =========================================================
+   EMPTY STATE
+========================================================= */
 
 const emptyStyle = {
   display:

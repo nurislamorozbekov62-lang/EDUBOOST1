@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import {
+  useEffect,
+  useState,
+} from 'react'
 
 import {
   Link,
@@ -9,13 +12,20 @@ import {
   useAuth,
 } from '../context/AuthContext'
 
+import {
+  supabase,
+} from '../lib/supabase'
+
+
 function RegisterPage() {
   const navigate =
     useNavigate()
 
+
   const {
     register,
   } = useAuth()
+
 
   const [
     form,
@@ -25,45 +35,220 @@ function RegisterPage() {
     email: '',
     role: '',
     school: '',
+    schoolId: '',
     className: '',
     password: '',
     passwordConfirmation: '',
   })
+
+
+  const [
+    schools,
+    setSchools,
+  ] = useState([])
+
+
+  const [
+    schoolsLoading,
+    setSchoolsLoading,
+  ] = useState(true)
+
 
   const [
     error,
     setError,
   ] = useState('')
 
+
   const [
     isSubmitting,
     setIsSubmitting,
   ] = useState(false)
 
-  function handleChange(event) {
+
+  useEffect(() => {
+    void loadSchools()
+  }, [])
+
+
+  async function loadSchools() {
+    try {
+      setSchoolsLoading(true)
+
+
+      const {
+        data,
+        error:
+          schoolsError,
+      } =
+        await supabase
+          .from('schools')
+          .select(`
+            id,
+            name,
+            short_name,
+            city,
+            status
+          `)
+          .eq(
+            'status',
+            'active',
+          )
+          .order(
+            'name',
+            {
+              ascending:
+                true,
+            },
+          )
+
+
+      if (
+        schoolsError
+      ) {
+        throw schoolsError
+      }
+
+
+      setSchools(
+        Array.isArray(data)
+          ? data
+          : [],
+      )
+    } catch (
+      loadError
+    ) {
+      console.error(
+        'Ошибка загрузки школ:',
+        loadError,
+      )
+
+
+      setSchools([])
+
+
+      setError(
+        'Не удалось загрузить список школ',
+      )
+    } finally {
+      setSchoolsLoading(false)
+    }
+  }
+
+
+  function handleChange(
+    event,
+  ) {
     const {
       name,
       value,
-    } = event.target
+    } =
+      event.target
+
+
+    /*
+      Школу обрабатываем отдельно,
+      потому что нам нужны одновременно:
+
+      school
+      schoolId
+    */
+    if (
+      name ===
+      'schoolId'
+    ) {
+      const selectedSchool =
+        schools.find(
+          (school) =>
+            String(
+              school.id,
+            ) ===
+            String(
+              value,
+            ),
+        )
+
+
+      setForm(
+        (
+          previousForm,
+        ) => ({
+          ...previousForm,
+
+          schoolId:
+            value,
+
+          school:
+            selectedSchool
+              ?.name ||
+            '',
+        }),
+      )
+
+
+      return
+    }
+
+
+    /*
+      Если пользователь меняет роль
+      с ученика на родителя,
+      старый класс очищаем.
+    */
+    if (
+      name ===
+        'role' &&
+      value !==
+        'Ученик'
+    ) {
+      setForm(
+        (
+          previousForm,
+        ) => ({
+          ...previousForm,
+
+          role:
+            value,
+
+          className:
+            '',
+        }),
+      )
+
+
+      return
+    }
+
 
     setForm(
-      (previousForm) => ({
+      (
+        previousForm,
+      ) => ({
         ...previousForm,
-        [name]: value,
+
+        [name]:
+          value,
       }),
     )
   }
 
-  async function handleSubmit(event) {
+
+  async function handleSubmit(
+    event,
+  ) {
     event.preventDefault()
 
+
     setError('')
+
 
     if (
       ![
         'Ученик',
         'Родитель',
-      ].includes(form.role)
+      ].includes(
+        form.role,
+      )
     ) {
       setError(
         'Выберите доступную роль',
@@ -72,8 +257,22 @@ function RegisterPage() {
       return
     }
 
+
     if (
-      form.password.length < 6
+      !form.schoolId ||
+      !form.school
+    ) {
+      setError(
+        'Выберите школу',
+      )
+
+      return
+    }
+
+
+    if (
+      form.password.length <
+      6
     ) {
       setError(
         'Пароль должен содержать минимум 6 символов',
@@ -81,6 +280,7 @@ function RegisterPage() {
 
       return
     }
+
 
     if (
       form.password !==
@@ -92,6 +292,7 @@ function RegisterPage() {
 
       return
     }
+
 
     if (
       form.role ===
@@ -105,23 +306,30 @@ function RegisterPage() {
       return
     }
 
+
     try {
       setIsSubmitting(true)
 
-      await register(form)
+
+      await register(
+        form,
+      )
+
 
       navigate('/')
     } catch (
       registerError
     ) {
       setError(
-        registerError.message ||
+        registerError
+          .message ||
           'Не удалось создать аккаунт',
       )
     } finally {
       setIsSubmitting(false)
     }
   }
+
 
   return (
     <div className="auth-page">
@@ -138,29 +346,38 @@ function RegisterPage() {
           </span>
         </h1>
 
+
         <h2>
           Регистрация
         </h2>
+
 
         <p className="auth-description">
           Создайте аккаунт
           ученика или родителя
         </p>
 
+
         <div
           style={{
             padding:
               '12px 14px',
+
             marginBottom:
               '18px',
+
             borderRadius:
               '14px',
+
             background:
               '#f4f8ff',
+
             color:
               '#49627f',
+
             fontSize:
               '13px',
+
             lineHeight:
               1.5,
           }}
@@ -172,16 +389,19 @@ function RegisterPage() {
           администрацию школы.
         </div>
 
+
         {error && (
           <div className="auth-error">
             {error}
           </div>
         )}
 
+
         <label className="form-group">
           <span>
             Имя и фамилия
           </span>
+
 
           <input
             name="name"
@@ -196,13 +416,16 @@ function RegisterPage() {
               isSubmitting
             }
             autoComplete="name"
+            placeholder="Например: Калматов Эрлан"
           />
         </label>
+
 
         <label className="form-group">
           <span>
             Электронная почта
           </span>
+
 
           <input
             type="email"
@@ -218,13 +441,16 @@ function RegisterPage() {
               isSubmitting
             }
             autoComplete="email"
+            placeholder="example@gmail.com"
           />
         </label>
+
 
         <label className="form-group">
           <span>
             Кто вы?
           </span>
+
 
           <select
             name="role"
@@ -243,9 +469,11 @@ function RegisterPage() {
               Выберите роль
             </option>
 
+
             <option value="Ученик">
               Ученик
             </option>
+
 
             <option value="Родитель">
               Родитель
@@ -253,26 +481,80 @@ function RegisterPage() {
           </select>
         </label>
 
+
         <label className="form-group">
           <span>
             Школа
           </span>
 
-          <input
-            name="school"
+
+          <select
+            name="schoolId"
             value={
-              form.school
+              form.schoolId
             }
             onChange={
               handleChange
             }
-            placeholder="Например: Школа №1"
             required
             disabled={
-              isSubmitting
+              isSubmitting ||
+              schoolsLoading
             }
-          />
+          >
+            <option value="">
+              {schoolsLoading
+                ? 'Загружаем школы...'
+                : 'Выберите школу'}
+            </option>
+
+
+            {schools.map(
+              (school) => (
+                <option
+                  key={
+                    school.id
+                  }
+                  value={
+                    school.id
+                  }
+                >
+                  {school.name}
+
+                  {school.city
+                    ? ` · ${school.city}`
+                    : ''}
+                </option>
+              ),
+            )}
+          </select>
         </label>
+
+
+        {!schoolsLoading &&
+          schools.length ===
+            0 && (
+            <div
+              style={{
+                marginTop:
+                  '-8px',
+
+                marginBottom:
+                  '14px',
+
+                color:
+                  '#b91c1c',
+
+                fontSize:
+                  '13px',
+              }}
+            >
+              Нет доступных школ.
+              Обратитесь к
+              администратору EduBoost.
+            </div>
+          )}
+
 
         {form.role ===
           'Ученик' && (
@@ -280,6 +562,7 @@ function RegisterPage() {
             <span>
               Класс
             </span>
+
 
             <select
               name="className"
@@ -298,57 +581,41 @@ function RegisterPage() {
                 Выберите класс
               </option>
 
-              <option value="1 класс">
-                1 класс
-              </option>
 
-              <option value="2 класс">
-                2 класс
-              </option>
-
-              <option value="3 класс">
-                3 класс
-              </option>
-
-              <option value="4 класс">
-                4 класс
-              </option>
-
-              <option value="5 класс">
-                5 класс
-              </option>
-
-              <option value="6 класс">
-                6 класс
-              </option>
-
-              <option value="7 класс">
-                7 класс
-              </option>
-
-              <option value="8 класс">
-                8 класс
-              </option>
-
-              <option value="9 класс">
-                9 класс
-              </option>
-
-              <option value="10 класс">
-                10 класс
-              </option>
-
-              <option value="11 класс">
-                11 класс
-              </option>
+              {[
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+              ].map(
+                (grade) => (
+                  <option
+                    key={
+                      grade
+                    }
+                    value={`${grade} класс`}
+                  >
+                    {grade} класс
+                  </option>
+                ),
+              )}
             </select>
           </label>
         )}
+
 
         <label className="form-group">
           <span>
             Пароль
           </span>
+
 
           <input
             type="password"
@@ -368,10 +635,12 @@ function RegisterPage() {
           />
         </label>
 
+
         <label className="form-group">
           <span>
             Повторите пароль
           </span>
+
 
           <input
             type="password"
@@ -392,11 +661,15 @@ function RegisterPage() {
           />
         </label>
 
+
         <button
           className="primary-button"
           type="submit"
           disabled={
-            isSubmitting
+            isSubmitting ||
+            schoolsLoading ||
+            schools.length ===
+              0
           }
         >
           {isSubmitting
@@ -404,8 +677,10 @@ function RegisterPage() {
             : 'Создать аккаунт'}
         </button>
 
+
         <p className="auth-footer">
           Уже есть аккаунт?{' '}
+
           <Link to="/login">
             Войти
           </Link>
@@ -414,5 +689,6 @@ function RegisterPage() {
     </div>
   )
 }
+
 
 export default RegisterPage

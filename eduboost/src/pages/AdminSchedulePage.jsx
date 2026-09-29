@@ -29,8 +29,8 @@ import {
 } from '../config/access'
 
 import {
-  getSchoolClasses,
-} from '../services/journalService'
+  getAdminSchoolClasses,
+} from '../services/supabaseAdminJournalService'
 
 import {
   createScheduleLesson,
@@ -99,6 +99,11 @@ function AdminSchedulePage() {
   ] = useState([])
 
   const [
+    adminClasses,
+    setAdminClasses,
+  ] = useState([])
+
+  const [
     loading,
     setLoading,
   ] = useState(true)
@@ -156,6 +161,7 @@ function AdminSchedulePage() {
       setAllLessons([])
       setTeachers([])
       setWorkloads([])
+      setAdminClasses([])
       setLoading(false)
 
       return
@@ -169,6 +175,7 @@ function AdminSchedulePage() {
         lessonsData,
         teachersData,
         workloadsData,
+        classesData,
       ] =
         await Promise.all([
           getSchoolSchedule(
@@ -180,6 +187,10 @@ function AdminSchedulePage() {
           ),
 
           getSchoolWorkloads(
+            user,
+          ),
+
+          getAdminSchoolClasses(
             user,
           ),
         ])
@@ -207,6 +218,14 @@ function AdminSchedulePage() {
           ? workloadsData
           : [],
       )
+
+      setAdminClasses(
+        Array.isArray(
+          classesData,
+        )
+          ? classesData
+          : [],
+      )
     } catch (
       loadError
     ) {
@@ -223,26 +242,6 @@ function AdminSchedulePage() {
   const classes =
     useMemo(
       () => {
-        let storedClasses = []
-
-        try {
-          const result =
-            user
-              ? getSchoolClasses(
-                  user,
-                )
-              : []
-
-          storedClasses =
-            Array.isArray(
-              result,
-            )
-              ? result
-              : []
-        } catch {
-          storedClasses = []
-        }
-
         const scheduleClasses =
           allLessons
             .map(
@@ -261,7 +260,7 @@ function AdminSchedulePage() {
 
         return [
           ...new Set([
-            ...storedClasses,
+            ...adminClasses,
             ...scheduleClasses,
             ...workloadClasses,
           ]),
@@ -280,7 +279,7 @@ function AdminSchedulePage() {
         )
       },
       [
-        user,
+        adminClasses,
         allLessons,
         workloads,
       ],
@@ -1316,7 +1315,7 @@ function LessonForm({
             Класс
           </span>
 
-          <input
+          <select
             name="className"
             value={
               form.className
@@ -1324,12 +1323,12 @@ function LessonForm({
             onChange={
               onClassChange
             }
-            list="eb-admin-schedule-classes"
-            placeholder="Например: 8А"
             required
-          />
+          >
 
-          <datalist id="eb-admin-schedule-classes">
+            <option value="">
+              Выберите класс
+            </option>
 
             {classes.map(
               (
@@ -1342,11 +1341,13 @@ function LessonForm({
                   value={
                     className
                   }
-                />
+                >
+                  {className}
+                </option>
               ),
             )}
 
-          </datalist>
+          </select>
 
         </label>
 
@@ -1357,7 +1358,7 @@ function LessonForm({
             Предмет
           </span>
 
-          <input
+          <select
             name="subject"
             value={
               form.subject
@@ -1365,12 +1366,17 @@ function LessonForm({
             onChange={
               onSubjectChange
             }
-            list="eb-admin-schedule-subjects"
-            placeholder="Математика"
             required
-          />
+            disabled={
+              subjects.length === 0
+            }
+          >
 
-          <datalist id="eb-admin-schedule-subjects">
+            <option value="">
+              {subjects.length === 0
+                ? 'Сначала оформите нагрузку для класса'
+                : 'Выберите предмет'}
+            </option>
 
             {subjects.map(
               (subject) => (
@@ -1381,11 +1387,13 @@ function LessonForm({
                   value={
                     subject
                   }
-                />
+                >
+                  {subject}
+                </option>
               ),
             )}
 
-          </datalist>
+          </select>
 
         </label>
 

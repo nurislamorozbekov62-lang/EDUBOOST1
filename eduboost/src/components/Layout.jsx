@@ -46,16 +46,28 @@ import {
 } from '../context/AuthContext'
 
 import {
+  useLanguage,
+} from '../context/LanguageContext'
+
+import {
   PERMISSIONS,
   ROLES,
   hasPermission,
 } from '../config/access'
+
+import StaffAccessGuard from './StaffAccessGuard'
+
 
 function Layout() {
   const {
     user,
     logout,
   } = useAuth()
+
+  const {
+    t,
+    isKyrgyz,
+  } = useLanguage()
 
   const location =
     useLocation()
@@ -68,13 +80,77 @@ function Layout() {
     setIsMenuOpen,
   ] = useState(false)
 
+
+  /* ========================================
+     CLOSE MOBILE MENU
+  ======================================== */
+
   useEffect(() => {
     setIsMenuOpen(false)
-  }, [location.pathname])
+  }, [
+    location.pathname,
+  ])
+
+
+  /* ========================================
+     MOBILE MENU UX
+  ======================================== */
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return undefined
+    }
+
+    const previousOverflow =
+      document.body.style.overflow
+
+    document.body.style.overflow =
+      'hidden'
+
+    function handleKeyDown(
+      event,
+    ) {
+      if (
+        event.key ===
+        'Escape'
+      ) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown,
+    )
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow
+
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown,
+      )
+    }
+  }, [
+    isMenuOpen,
+  ])
+
+
+  /* ========================================
+     MENUS
+  ======================================== */
 
   const menus = useMemo(
-    () => createMenus(user),
-    [user],
+    () =>
+      createMenus(
+        user,
+        t,
+      ),
+    [
+      user,
+      t,
+    ],
   )
 
   const mainMenu =
@@ -83,43 +159,89 @@ function Layout() {
   const extraMenu =
     menus.extra
 
-  const allMenuItems = [
-    ...mainMenu,
-    ...extraMenu,
-  ]
+  const allMenuItems =
+    useMemo(
+      () => [
+        ...mainMenu,
+        ...extraMenu,
+      ],
+      [
+        mainMenu,
+        extraMenu,
+      ],
+    )
+
+
+  /* ========================================
+     PAGE TITLE
+  ======================================== */
 
   function getPageTitle() {
+    if (
+      location.pathname ===
+      '/settings'
+    ) {
+      return t(
+        'navigation.settings',
+      )
+    }
+
     if (
       location.pathname.startsWith(
         '/notifications',
       )
     ) {
-      return 'Уведомления'
+      return t(
+        'navigation.notifications',
+      )
     }
 
     const currentItem =
-      allMenuItems.find(
-        (item) => {
-          if (item.path === '/') {
+      [
+        ...allMenuItems,
+      ]
+        .sort(
+          (
+            first,
+            second,
+          ) =>
+            second.path.length -
+            first.path.length,
+        )
+        .find(
+          (
+            item,
+          ) => {
+            if (
+              item.path ===
+              '/'
+            ) {
+              return (
+                location.pathname ===
+                '/'
+              )
+            }
+
             return (
               location.pathname ===
-              '/'
+                item.path ||
+              location.pathname.startsWith(
+                `${item.path}/`,
+              )
             )
-          }
-
-          return (
-            location.pathname.startsWith(
-              item.path,
-            )
-          )
-        },
-      )
+          },
+        )
 
     return (
       currentItem?.label ||
       'EduBoost'
     )
   }
+
+
+  /* ========================================
+     USER INITIAL
+  ======================================== */
 
   function getInitial() {
     return String(
@@ -130,46 +252,129 @@ function Layout() {
       .toUpperCase()
   }
 
+
+  /* ========================================
+     WORKSPACE LABEL
+  ======================================== */
+
   function getWorkspaceLabel() {
     const labels = {
       [ROLES.STUDENT]:
-        'Личный кабинет',
+        t(
+          'workspace.student',
+        ),
 
       [ROLES.PARENT]:
-        'Дневник ребёнка',
+        t(
+          'workspace.parent',
+        ),
 
       [ROLES.TEACHER]:
-        'Кабинет учителя',
+        t(
+          'workspace.teacher',
+        ),
 
       [ROLES.SCHOOL_ADMIN]:
-        'Администрирование школы',
+        t(
+          'workspace.schoolAdmin',
+        ),
 
       [ROLES.DIRECTOR]:
-        'Кабинет директора',
+        t(
+          'workspace.director',
+        ),
 
       [ROLES.VICE_PRINCIPAL]:
-        'Кабинет завуча',
+        t(
+          'workspace.vicePrincipal',
+        ),
 
       [ROLES.PARTNER]:
-        'Кабинет партнёра',
+        t(
+          'workspace.partner',
+        ),
 
       [ROLES.SUPER_ADMIN]:
-        'Управление EduBoost',
+        t(
+          'workspace.superAdmin',
+        ),
     }
 
     return (
-      labels[user?.role] ||
+      labels[
+        user?.role
+      ] ||
       'EduBoost'
     )
   }
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
+
+  /* ========================================
+     LOGOUT
+  ======================================== */
+
+  async function handleLogout() {
+    const confirmed =
+      window.confirm(
+        t(
+          'account.logoutConfirm',
+        ),
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await logout()
+
+      navigate(
+        '/login',
+        {
+          replace: true,
+        },
+      )
+    } catch (
+      error
+    ) {
+      console.error(
+        'Logout:',
+        error,
+      )
+    }
   }
+
+
+  const openMenuLabel =
+    isKyrgyz
+      ? 'Менюну ачуу'
+      : 'Открыть меню'
+
+  const closeMenuLabel =
+    isKyrgyz
+      ? 'Менюну жабуу'
+      : 'Закрыть меню'
+
+  const homeLabel =
+    isKyrgyz
+      ? 'Башкы бетке өтүү'
+      : 'На главную'
+
 
   return (
     <div className="app-shell">
+
+      {/* ========================================
+          STAFF ACCESS GUARD
+      ======================================== */}
+
+      <StaffAccessGuard />
+
+
+      {/* ========================================
+          SIDEBAR
+      ======================================== */}
+
       <aside
         className={`app-sidebar ${
           isMenuOpen
@@ -177,8 +382,33 @@ function Layout() {
             : ''
         }`}
       >
+
         <div className="sidebar-header">
-          <div className="brand">
+
+          <button
+            type="button"
+            className="brand"
+            onClick={() =>
+              navigate('/')
+            }
+            aria-label={
+              homeLabel
+            }
+            title={
+              homeLabel
+            }
+            style={{
+              border: 'none',
+              padding: 0,
+              background:
+                'transparent',
+              cursor:
+                'pointer',
+              textAlign:
+                'left',
+            }}
+          >
+
             <div className="brand-icon">
               <BookOpen
                 size={23}
@@ -188,48 +418,79 @@ function Layout() {
             <span>
               EduBoost
             </span>
-          </div>
+
+          </button>
+
 
           <button
             type="button"
             className="icon-button sidebar-close"
             onClick={() =>
-              setIsMenuOpen(false)
+              setIsMenuOpen(
+                false,
+              )
             }
-            aria-label="Закрыть меню"
+            aria-label={
+              closeMenuLabel
+            }
+            title={
+              closeMenuLabel
+            }
           >
-            <X size={22} />
+            <X
+              size={22}
+            />
           </button>
+
         </div>
 
+
+        {/* USER */}
+
         <div className="sidebar-user-card">
+
           <div className="user-avatar">
             {getInitial()}
           </div>
 
           <div className="sidebar-user-info">
+
             <strong>
               {user?.name ||
-                'Пользователь'}
+                (isKyrgyz
+                  ? 'Колдонуучу'
+                  : 'Пользователь')}
             </strong>
 
             <span>
-              {user?.role ||
-                'Пользователь'}
+              {getRoleLabel(
+                user?.role,
+                isKyrgyz,
+              )}
             </span>
+
           </div>
+
         </div>
 
+
+        {/* NAVIGATION */}
+
         <nav className="sidebar-navigation">
+
           {allMenuItems.map(
-            (item) => {
+            (
+              item,
+            ) => {
               const Icon =
                 item.icon
 
               return (
                 <NavLink
                   key={`${item.path}-${item.label}`}
-                  to={item.path}
+                  to={
+                    item.path
+                  }
                   end={
                     item.path ===
                     '/'
@@ -244,6 +505,7 @@ function Layout() {
                     }`
                   }
                 >
+
                   <Icon
                     size={20}
                     strokeWidth={2}
@@ -252,11 +514,49 @@ function Layout() {
                   <span>
                     {item.label}
                   </span>
+
                 </NavLink>
               )
             },
           )}
+
         </nav>
+
+
+        {/* SETTINGS */}
+
+        <NavLink
+          to="/settings"
+          className={({
+            isActive,
+          }) =>
+            `sidebar-link ${
+              isActive
+                ? 'sidebar-link--active'
+                : ''
+            }`
+          }
+          style={{
+            marginTop:
+              '8px',
+          }}
+        >
+
+          <Settings
+            size={20}
+            strokeWidth={2}
+          />
+
+          <span>
+            {t(
+              'navigation.settings',
+            )}
+          </span>
+
+        </NavLink>
+
+
+        {/* LOGOUT */}
 
         <button
           type="button"
@@ -265,64 +565,229 @@ function Layout() {
             handleLogout
           }
         >
-          <LogOut size={20} />
+
+          <LogOut
+            size={20}
+          />
 
           <span>
-            Выйти из аккаунта
+            {t(
+              'account.logoutFromAccount',
+            )}
           </span>
+
         </button>
+
       </aside>
+
+
+      {/* ========================================
+          OVERLAY
+      ======================================== */}
 
       {isMenuOpen && (
         <button
           type="button"
           className="sidebar-overlay"
           onClick={() =>
-            setIsMenuOpen(false)
+            setIsMenuOpen(
+              false,
+            )
           }
-          aria-label="Закрыть меню"
+          aria-label={
+            closeMenuLabel
+          }
         />
       )}
 
+
       <div className="app-main">
+
+        {/* ========================================
+            MOBILE HEADER
+        ======================================== */}
+
         <header className="mobile-header">
+
+          {/* MENU */}
+
           <button
             type="button"
             className="icon-button"
             onClick={() =>
-              setIsMenuOpen(true)
+              setIsMenuOpen(
+                true,
+              )
             }
-            aria-label="Открыть меню"
+            aria-label={
+              openMenuLabel
+            }
+            title={
+              openMenuLabel
+            }
           >
-            <Menu size={24} />
+            <Menu
+              size={24}
+            />
           </button>
 
-          <div className="mobile-brand">
-            <BookOpen size={22} />
+
+          {/* LOGO */}
+
+          <button
+            type="button"
+            className="mobile-brand"
+            onClick={() =>
+              navigate('/')
+            }
+            aria-label={
+              homeLabel
+            }
+            title={
+              homeLabel
+            }
+            style={{
+              border:
+                'none',
+
+              background:
+                'transparent',
+
+              padding:
+                0,
+
+              color:
+                'var(--primary)',
+
+              cursor:
+                'pointer',
+            }}
+          >
+
+            <BookOpen
+              size={22}
+            />
 
             <span>
               EduBoost
             </span>
+
+          </button>
+
+
+          {/* RIGHT */}
+
+          <div
+            className="mobile-header-actions"
+            style={{
+              display:
+                'flex',
+
+              alignItems:
+                'center',
+
+              gap:
+                '9px',
+            }}
+          >
+
+            {/* SETTINGS */}
+
+            <button
+              type="button"
+              className="notification-button"
+              onClick={() =>
+                navigate(
+                  '/settings',
+                )
+              }
+              aria-label={
+                t(
+                  'navigation.settings',
+                )
+              }
+              title={
+                t(
+                  'navigation.settings',
+                )
+              }
+              style={
+                location.pathname ===
+                '/settings'
+                  ? {
+                      color:
+                        'var(--primary)',
+
+                      background:
+                        'var(--primary-light)',
+                    }
+                  : undefined
+              }
+            >
+
+              <Settings
+                size={22}
+              />
+
+            </button>
+
+
+            {/* NOTIFICATIONS */}
+
+            <button
+              type="button"
+              className="notification-button"
+              onClick={() =>
+                navigate(
+                  '/notifications',
+                )
+              }
+              aria-label={
+                t(
+                  'navigation.notifications',
+                )
+              }
+              title={
+                t(
+                  'navigation.notifications',
+                )
+              }
+              style={
+                location.pathname.startsWith(
+                  '/notifications',
+                )
+                  ? {
+                      color:
+                        'var(--primary)',
+
+                      background:
+                        'var(--primary-light)',
+                    }
+                  : undefined
+              }
+            >
+
+              <Bell
+                size={22}
+              />
+
+              <span className="notification-dot" />
+
+            </button>
+
           </div>
 
-          <button
-            type="button"
-            className="notification-button"
-            onClick={() =>
-              navigate(
-                '/notifications',
-              )
-            }
-            aria-label="Уведомления"
-          >
-            <Bell size={22} />
-
-            <span className="notification-dot" />
-          </button>
         </header>
 
+
+        {/* ========================================
+            DESKTOP HEADER
+        ======================================== */}
+
         <header className="desktop-header">
+
           <div>
+
             <p className="page-eyebrow">
               {getWorkspaceLabel()}
             </p>
@@ -330,85 +795,223 @@ function Layout() {
             <h1 className="desktop-page-title">
               {getPageTitle()}
             </h1>
+
           </div>
 
-          <button
-            type="button"
-            className="desktop-profile"
-            onClick={() =>
-              navigate('/profile')
-            }
+
+          <div
+            style={{
+              display:
+                'flex',
+
+              alignItems:
+                'center',
+
+              gap:
+                '10px',
+            }}
           >
-            <div className="user-avatar user-avatar--small">
-              {getInitial()}
-            </div>
 
-            <div>
-              <strong>
-                {user?.name ||
-                  'Пользователь'}
-              </strong>
+            {/* DESKTOP SETTINGS */}
 
-              <span>
-                {user?.role ||
-                  'Пользователь'}
-              </span>
-            </div>
-          </button>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() =>
+                navigate(
+                  '/settings',
+                )
+              }
+              aria-label={
+                t(
+                  'navigation.settings',
+                )
+              }
+              title={
+                t(
+                  'navigation.settings',
+                )
+              }
+            >
+
+              <Settings
+                size={21}
+              />
+
+            </button>
+
+
+            {/* PROFILE */}
+
+            <button
+              type="button"
+              className="desktop-profile"
+              onClick={() =>
+                navigate(
+                  '/profile',
+                )
+              }
+            >
+
+              <div className="user-avatar user-avatar--small">
+                {getInitial()}
+              </div>
+
+              <div>
+
+                <strong>
+                  {user?.name ||
+                    (isKyrgyz
+                      ? 'Колдонуучу'
+                      : 'Пользователь')}
+                </strong>
+
+                <span>
+                  {getRoleLabel(
+                    user?.role,
+                    isKyrgyz,
+                  )}
+                </span>
+
+              </div>
+
+            </button>
+
+          </div>
+
         </header>
+
+
+        {/* ========================================
+            CONTENT
+        ======================================== */}
 
         <main className="app-content">
           <Outlet />
         </main>
 
+
+        {/* ========================================
+            MOBILE BOTTOM NAV
+        ======================================== */}
+
         <nav className="bottom-navigation">
+
           {mainMenu
-            .slice(0, 5)
-            .map((item) => {
-              const Icon =
-                item.icon
+            .slice(
+              0,
+              5,
+            )
+            .map(
+              (
+                item,
+              ) => {
+                const Icon =
+                  item.icon
 
-              return (
-                <NavLink
-                  key={`${item.path}-${item.label}`}
-                  to={item.path}
-                  end={
-                    item.path ===
-                    '/'
-                  }
-                  className={({
-                    isActive,
-                  }) =>
-                    `bottom-navigation-item ${
-                      isActive
-                        ? 'bottom-navigation-item--active'
-                        : ''
-                    }`
-                  }
-                >
-                  <Icon
-                    size={22}
-                    strokeWidth={2}
-                  />
+                return (
+                  <NavLink
+                    key={`${item.path}-${item.label}`}
+                    to={
+                      item.path
+                    }
+                    end={
+                      item.path ===
+                      '/'
+                    }
+                    className={({
+                      isActive,
+                    }) =>
+                      `bottom-navigation-item ${
+                        isActive
+                          ? 'bottom-navigation-item--active'
+                          : ''
+                      }`
+                    }
+                  >
 
-                  <span>
-                    {item.shortLabel ||
-                      item.label}
-                  </span>
-                </NavLink>
-              )
-            })}
+                    <Icon
+                      size={22}
+                      strokeWidth={2}
+                    />
+
+                    <span>
+                      {item.shortLabel ||
+                        item.label}
+                    </span>
+
+                  </NavLink>
+                )
+              },
+            )}
+
         </nav>
+
       </div>
+
     </div>
   )
 }
+
+
+/* ========================================
+   ROLE LABEL
+======================================== */
+
+function getRoleLabel(
+  role,
+  isKyrgyz,
+) {
+  if (!isKyrgyz) {
+    return (
+      role ||
+      'Пользователь'
+    )
+  }
+
+  const labels = {
+    [ROLES.STUDENT]:
+      'Окуучу',
+
+    [ROLES.PARENT]:
+      'Ата-эне',
+
+    [ROLES.TEACHER]:
+      'Мугалим',
+
+    [ROLES.SCHOOL_ADMIN]:
+      'Мектеп администратору',
+
+    [ROLES.DIRECTOR]:
+      'Директор',
+
+    [ROLES.VICE_PRINCIPAL]:
+      'Директордун орун басары',
+
+    [ROLES.PARTNER]:
+      'Өнөктөш',
+
+    [ROLES.SUPER_ADMIN]:
+      'Башкы администратор',
+  }
+
+  return (
+    labels[
+      role
+    ] ||
+    'Колдонуучу'
+  )
+}
+
 
 /* ========================================
    MENU FACTORY
 ======================================== */
 
-function createMenus(user) {
+function createMenus(
+  user,
+  t,
+) {
   if (!user) {
     return {
       main: [],
@@ -416,251 +1019,512 @@ function createMenus(user) {
     }
   }
 
-  switch (user.role) {
+  switch (
+    user.role
+  ) {
     case ROLES.TEACHER:
-      return createTeacherMenu(user)
+      return createTeacherMenu(
+        user,
+        t,
+      )
 
     case ROLES.PARENT:
-      return createParentMenu()
+      return createParentMenu(
+        t,
+      )
 
     case ROLES.SCHOOL_ADMIN:
-      return createSchoolAdminMenu(user)
+      return createSchoolAdminMenu(
+        user,
+        t,
+      )
 
     case ROLES.DIRECTOR:
-      return createDirectorMenu(user)
+      return createDirectorMenu(
+        t,
+      )
 
     case ROLES.VICE_PRINCIPAL:
-      return createVicePrincipalMenu(user)
+      return createVicePrincipalMenu(
+        user,
+        t,
+      )
 
     case ROLES.PARTNER:
-      return createPartnerMenu()
+      return createPartnerMenu(
+        t,
+      )
 
     case ROLES.SUPER_ADMIN:
-      return createSuperAdminMenu(user)
+      return createSuperAdminMenu(
+        t,
+      )
 
     case ROLES.STUDENT:
+
     default:
-      return createStudentMenu()
+      return createStudentMenu(
+        t,
+      )
   }
 }
+
 
 /* ========================================
    STUDENT
 ======================================== */
 
-function createStudentMenu() {
+function createStudentMenu(
+  t,
+) {
   return {
     main: [
       {
         path: '/',
-        label: 'Главная',
+        label:
+          t(
+            'navigation.home',
+          ),
         icon: Home,
       },
 
       {
         path: '/schedule',
-        label: 'Расписание',
-        shortLabel: 'Уроки',
-        icon: CalendarDays,
+        label:
+          t(
+            'navigation.schedule',
+          ),
+        shortLabel:
+          t(
+            'navigation.lessons',
+          ),
+        icon:
+          CalendarDays,
       },
 
       {
         path: '/tasks',
-        label: 'Задания',
-        icon: ClipboardList,
+        label:
+          t(
+            'navigation.tasks',
+          ),
+        icon:
+          ClipboardList,
       },
 
       {
         path: '/achievements',
-        label: 'Достижения',
-        shortLabel: 'Награды',
-        icon: Award,
+        label:
+          t(
+            'navigation.achievements',
+          ),
+        shortLabel:
+          isCompactRewardLabel(
+            t,
+          ),
+        icon:
+          Award,
       },
 
       {
         path: '/profile',
-        label: 'Профиль',
-        icon: User,
+        label:
+          t(
+            'navigation.profile',
+          ),
+        icon:
+          User,
       },
     ],
 
     extra: [
       {
-        path: '/my-journal',
-        label: 'Успеваемость',
-        icon: GraduationCap,
+        path:
+          '/my-journal',
+
+        label:
+          t(
+            'navigation.progress',
+          ),
+
+        icon:
+          GraduationCap,
       },
 
       {
-        path: '/attendance',
-        label: 'Посещаемость',
-        icon: CheckCircle2,
+        path:
+          '/attendance',
+
+        label:
+          t(
+            'navigation.attendance',
+          ),
+
+        icon:
+          CheckCircle2,
       },
 
       {
-        path: '/tests',
-        label: 'Мои тесты',
-        icon: CheckSquare,
+        path:
+          '/tests',
+
+        label:
+          t(
+            'navigation.tests',
+          ),
+
+        icon:
+          CheckSquare,
       },
 
       {
-        path: '/courses',
-        label: 'Учебные курсы',
-        icon: BookOpen,
+        path:
+          '/courses',
+
+        label:
+          t(
+            'navigation.courses',
+          ),
+
+        icon:
+          BookOpen,
       },
 
       {
-        path: '/messages',
-        label: 'Сообщения',
-        icon: MessageCircle,
+        path:
+          '/messages',
+
+        label:
+          t(
+            'navigation.messages',
+          ),
+
+        icon:
+          MessageCircle,
       },
 
       {
-        path: '/classes',
-        label: 'Мой класс',
-        icon: Users,
+        path:
+          '/classes',
+
+        label:
+          t(
+            'navigation.myClass',
+          ),
+
+        icon:
+          Users,
       },
 
       {
-        path: '/ranking',
-        label: 'Рейтинг',
-        icon: Award,
+        path:
+          '/ranking',
+
+        label:
+          t(
+            'navigation.rating',
+          ),
+
+        icon:
+          Award,
       },
 
       {
-        path: '/partner-rewards',
-        label: 'Награды партнёров',
-        icon: Store,
+        path:
+          '/partner-rewards',
+
+        label:
+          t(
+            'navigation.partnerRewards',
+          ),
+
+        icon:
+          Store,
       },
 
       {
-        path: '/my-coupons',
-        label: 'Мои купоны',
-        icon: CheckSquare,
+        path:
+          '/my-coupons',
+
+        label:
+          t(
+            'navigation.myCoupons',
+          ),
+
+        icon:
+          CheckSquare,
       },
 
       {
-        path: '/store',
-        label: 'Магазин наград',
-        icon: Store,
+        path:
+          '/store',
+
+        label:
+          t(
+            'navigation.rewardsStore',
+          ),
+
+        icon:
+          Store,
       },
     ],
   }
 }
+
+
+function isCompactRewardLabel(
+  t,
+) {
+  const full =
+    t(
+      'navigation.achievements',
+    )
+
+  if (
+    full ===
+    'Жетишкендиктер'
+  ) {
+    return 'Сыйлыктар'
+  }
+
+  return 'Награды'
+}
+
 
 /* ========================================
    PARENT
 ======================================== */
 
-function createParentMenu() {
+function createParentMenu(
+  t,
+) {
   return {
     main: [
       {
         path: '/',
-        label: 'Главная',
+        label:
+          t(
+            'navigation.home',
+          ),
         icon: Home,
       },
 
       {
-        path: '/schedule',
-        label: 'Расписание',
-        shortLabel: 'Уроки',
-        icon: CalendarDays,
+        path:
+          '/schedule',
+
+        label:
+          t(
+            'navigation.schedule',
+          ),
+
+        shortLabel:
+          t(
+            'navigation.lessons',
+          ),
+
+        icon:
+          CalendarDays,
       },
 
       {
-        path: '/parent-grades',
-        label: 'Оценки',
-        icon: GraduationCap,
+        path:
+          '/parent-grades',
+
+        label:
+          t(
+            'navigation.grades',
+          ),
+
+        icon:
+          GraduationCap,
       },
 
       {
-        path: '/attendance',
-        label: 'Посещаемость',
-        shortLabel: 'Пропуски',
-        icon: CheckCircle2,
+        path:
+          '/attendance',
+
+        label:
+          t(
+            'navigation.attendance',
+          ),
+
+        shortLabel:
+          t(
+            'navigation.attendance',
+          ),
+
+        icon:
+          CheckCircle2,
       },
 
       {
-        path: '/profile',
-        label: 'Профиль',
-        icon: User,
+        path:
+          '/profile',
+
+        label:
+          t(
+            'navigation.profile',
+          ),
+
+        icon:
+          User,
       },
     ],
 
     extra: [
       {
-        path: '/quarter-grades',
-        label: 'Четвертные оценки',
-        icon: BarChart3,
+        path:
+          '/quarter-grades',
+
+        label:
+          t(
+            'navigation.quarterGrades',
+          ),
+
+        icon:
+          BarChart3,
       },
 
       {
-        path: '/parent-tasks',
-        label: 'Задания ребёнка',
-        icon: ClipboardList,
+        path:
+          '/parent-tasks',
+
+        label:
+          t(
+            'navigation.childTasks',
+          ),
+
+        icon:
+          ClipboardList,
       },
 
       {
-        path: '/achievements',
-        label: 'Достижения',
-        icon: Award,
+        path:
+          '/achievements',
+
+        label:
+          t(
+            'navigation.achievements',
+          ),
+
+        icon:
+          Award,
       },
 
       {
-        path: '/messages',
-        label: 'Сообщения',
-        icon: MessageCircle,
+        path:
+          '/messages',
+
+        label:
+          t(
+            'navigation.messages',
+          ),
+
+        icon:
+          MessageCircle,
       },
 
       {
-        path: '/notifications',
-        label: 'Уведомления',
-        icon: Bell,
+        path:
+          '/notifications',
+
+        label:
+          t(
+            'navigation.notifications',
+          ),
+
+        icon:
+          Bell,
       },
     ],
   }
 }
 
+
 /* ========================================
    TEACHER
 ======================================== */
 
-function createTeacherMenu(user) {
+function createTeacherMenu(
+  user,
+  t,
+) {
   const main = [
     {
-      path: '/',
-      label: 'Главная',
-      icon: Home,
+      path:
+        '/',
+
+      label:
+        t(
+          'navigation.home',
+        ),
+
+      icon:
+        Home,
     },
 
     {
-      path: '/teacher-schedule',
-      label: 'Моё расписание',
-      shortLabel: 'Уроки',
-      icon: CalendarDays,
+      path:
+        '/teacher-schedule',
+
+      label:
+        t(
+          'navigation.teacherSchedule',
+        ),
+
+      shortLabel:
+        t(
+          'navigation.lessons',
+        ),
+
+      icon:
+        CalendarDays,
     },
 
     {
-      path: '/tasks',
-      label: 'Задания',
-      icon: ClipboardList,
+      path:
+        '/tasks',
+
+      label:
+        t(
+          'navigation.tasks',
+        ),
+
+      icon:
+        ClipboardList,
     },
 
     {
-      path: '/journal',
-      label: 'Журнал',
-      icon: GraduationCap,
+      path:
+        '/journal',
+
+      label:
+        t(
+          'navigation.journal',
+        ),
+
+      icon:
+        GraduationCap,
     },
 
     {
-      path: '/profile',
-      label: 'Профиль',
-      icon: User,
+      path:
+        '/profile',
+
+      label:
+        t(
+          'navigation.profile',
+        ),
+
+      icon:
+        User,
     },
   ]
 
+
   const extra = []
+
 
   if (
     hasPermission(
@@ -669,11 +1533,19 @@ function createTeacherMenu(user) {
     )
   ) {
     extra.push({
-      path: '/classes',
-      label: 'Мои классы',
-      icon: School,
+      path:
+        '/classes',
+
+      label:
+        t(
+          'navigation.myClasses',
+        ),
+
+      icon:
+        School,
     })
   }
+
 
   if (
     hasPermission(
@@ -682,11 +1554,19 @@ function createTeacherMenu(user) {
     )
   ) {
     extra.push({
-      path: '/teacher-tests',
-      label: 'Конструктор тестов',
-      icon: CheckSquare,
+      path:
+        '/teacher-tests',
+
+      label:
+        t(
+          'navigation.testBuilder',
+        ),
+
+      icon:
+        CheckSquare,
     })
   }
+
 
   if (
     hasPermission(
@@ -695,24 +1575,48 @@ function createTeacherMenu(user) {
     )
   ) {
     extra.push({
-      path: '/teacher-courses',
-      label: 'Учебные курсы',
-      icon: BookOpen,
+      path:
+        '/teacher-courses',
+
+      label:
+        t(
+          'navigation.courses',
+        ),
+
+      icon:
+        BookOpen,
     })
   }
 
+
   extra.push(
     {
-      path: '/messages',
-      label: 'Сообщения',
-      icon: MessageCircle,
+      path:
+        '/messages',
+
+      label:
+        t(
+          'navigation.messages',
+        ),
+
+      icon:
+        MessageCircle,
     },
+
     {
-      path: '/notifications',
-      label: 'Уведомления',
-      icon: Bell,
+      path:
+        '/notifications',
+
+      label:
+        t(
+          'navigation.notifications',
+        ),
+
+      icon:
+        Bell,
     },
   )
+
 
   return {
     main,
@@ -720,44 +1624,85 @@ function createTeacherMenu(user) {
   }
 }
 
+
 /* ========================================
    SCHOOL ADMIN
 ======================================== */
 
-function createSchoolAdminMenu(user) {
+function createSchoolAdminMenu(
+  user,
+  t,
+) {
   const main = [
     {
-      path: '/',
-      label: 'Главная',
-      icon: LayoutDashboard,
+      path:
+        '/',
+
+      label:
+        t(
+          'navigation.home',
+        ),
+
+      icon:
+        LayoutDashboard,
     },
 
     {
-      path: '/admin/users',
-      label: 'Пользователи',
-      icon: Users,
+      path:
+        '/admin/users',
+
+      label:
+        t(
+          'navigation.users',
+        ),
+
+      icon:
+        Users,
     },
 
     {
-      path: '/admin/classes',
-      label: 'Классы',
-      icon: School,
+      path:
+        '/admin/classes',
+
+      label:
+        t(
+          'navigation.classes',
+        ),
+
+      icon:
+        School,
     },
 
     {
-      path: '/admin/staff',
-      label: 'Сотрудники',
-      icon: UserCog,
+      path:
+        '/admin/staff',
+
+      label:
+        t(
+          'navigation.staff',
+        ),
+
+      icon:
+        UserCog,
     },
 
     {
-      path: '/profile',
-      label: 'Профиль',
-      icon: User,
+      path:
+        '/profile',
+
+      label:
+        t(
+          'navigation.profile',
+        ),
+
+      icon:
+        User,
     },
   ]
 
+
   const extra = []
+
 
   if (
     hasPermission(
@@ -766,11 +1711,19 @@ function createSchoolAdminMenu(user) {
     )
   ) {
     extra.push({
-      path: '/admin/school-year',
-      label: 'Учебный год',
-      icon: CalendarDays,
+      path:
+        '/admin/school-year',
+
+      label:
+        t(
+          'navigation.schoolYear',
+        ),
+
+      icon:
+        CalendarDays,
     })
   }
+
 
   if (
     hasPermission(
@@ -779,11 +1732,19 @@ function createSchoolAdminMenu(user) {
     )
   ) {
     extra.push({
-      path: '/admin/import',
-      label: 'Импорт данных',
-      icon: Import,
+      path:
+        '/admin/import',
+
+      label:
+        t(
+          'navigation.importData',
+        ),
+
+      icon:
+        Import,
     })
   }
+
 
   if (
     hasPermission(
@@ -792,17 +1753,33 @@ function createSchoolAdminMenu(user) {
     )
   ) {
     extra.push({
-      path: '/admin/export',
-      label: 'Экспорт данных',
-      icon: Database,
+      path:
+        '/admin/export',
+
+      label:
+        t(
+          'navigation.exportData',
+        ),
+
+      icon:
+        Database,
     })
   }
 
+
   extra.push({
-    path: '/admin/settings',
-    label: 'Настройки школы',
-    icon: Settings,
+    path:
+      '/admin/settings',
+
+    label:
+      t(
+        'navigation.schoolSettings',
+      ),
+
+    icon:
+      Settings,
   })
+
 
   return {
     main,
@@ -810,45 +1787,104 @@ function createSchoolAdminMenu(user) {
   }
 }
 
+
 /* ========================================
    VICE PRINCIPAL
 ======================================== */
 
-function createVicePrincipalMenu(user) {
+function createVicePrincipalMenu(
+  user,
+  t,
+) {
   const main = [
     {
-      path: '/',
-      label: 'Главная',
-      icon: Home,
+      path:
+        '/',
+
+      label:
+        t(
+          'navigation.home',
+        ),
+
+      icon:
+        Home,
     },
 
     {
-      path: '/admin/schedule',
-      label: 'Расписание',
-      shortLabel: 'Уроки',
-      icon: CalendarDays,
+      path:
+        '/admin/schedule',
+
+      label:
+        t(
+          'navigation.schedule',
+        ),
+
+      shortLabel:
+        t(
+          'navigation.lessons',
+        ),
+
+      icon:
+        CalendarDays,
     },
 
     {
-      path: '/admin/workload',
-      label: 'Нагрузка',
-      icon: BriefcaseBusiness,
+      path:
+        '/admin/workload',
+
+      label:
+        t(
+          'navigation.workload',
+        ),
+
+      icon:
+        BriefcaseBusiness,
     },
 
     {
-      path: '/admin/journals',
-      label: 'Журналы',
-      icon: GraduationCap,
+      path:
+        '/admin/journals',
+
+      label:
+        t(
+          'navigation.journals',
+        ),
+
+      icon:
+        GraduationCap,
     },
 
     {
-      path: '/profile',
-      label: 'Профиль',
-      icon: User,
+      path:
+        '/profile',
+
+      label:
+        t(
+          'navigation.profile',
+        ),
+
+      icon:
+        User,
     },
   ]
 
+
   const extra = []
+
+
+  extra.push({
+    path:
+      '/admin/school-year',
+
+    label:
+      t(
+        'navigation.schoolYear',
+      ),
+
+    icon:
+      CalendarDays,
+  })
+
 
   if (
     hasPermission(
@@ -857,37 +1893,74 @@ function createVicePrincipalMenu(user) {
     )
   ) {
     extra.push({
-      path: '/admin/substitutions',
-      label: 'Замены',
-      icon: Users,
+      path:
+        '/admin/substitutions',
+
+      label:
+        t(
+          'navigation.substitutions',
+        ),
+
+      icon:
+        Users,
     })
   }
 
+
   extra.push(
     {
-      path: '/admin/attendance',
-      label: 'Посещаемость школы',
-      icon: CheckCircle2,
+      path:
+        '/admin/attendance',
+
+      label:
+        t(
+          'navigation.schoolAttendance',
+        ),
+
+      icon:
+        CheckCircle2,
     },
 
     {
-      path: '/admin/reports',
-      label: 'Отчёты',
-      icon: FileBarChart,
+      path:
+        '/admin/reports',
+
+      label:
+        t(
+          'navigation.reports',
+        ),
+
+      icon:
+        FileBarChart,
     },
 
     {
-      path: '/admin/classes',
-      label: 'Классы',
-      icon: School,
+      path:
+        '/admin/classes',
+
+      label:
+        t(
+          'navigation.classes',
+        ),
+
+      icon:
+        School,
     },
 
     {
-      path: '/messages',
-      label: 'Сообщения',
-      icon: MessageCircle,
+      path:
+        '/messages',
+
+      label:
+        t(
+          'navigation.messages',
+        ),
+
+      icon:
+        MessageCircle,
     },
   )
+
 
   return {
     main,
@@ -895,125 +1968,264 @@ function createVicePrincipalMenu(user) {
   }
 }
 
+
 /* ========================================
    DIRECTOR
 ======================================== */
 
-function createDirectorMenu() {
+function createDirectorMenu(
+  t,
+) {
   return {
     main: [
       {
-        path: '/',
-        label: 'Главная',
-        icon: Home,
+        path:
+          '/',
+
+        label:
+          t(
+            'navigation.home',
+          ),
+
+        icon:
+          Home,
       },
 
       {
-        path: '/admin/analytics',
-        label: 'Аналитика',
-        icon: ChartNoAxesCombined,
+        path:
+          '/admin/analytics',
+
+        label:
+          t(
+            'navigation.analytics',
+          ),
+
+        icon:
+          ChartNoAxesCombined,
       },
 
       {
-        path: '/admin/journals',
-        label: 'Журналы',
-        icon: GraduationCap,
+        path:
+          '/admin/journals',
+
+        label:
+          t(
+            'navigation.journals',
+          ),
+
+        icon:
+          GraduationCap,
       },
 
       {
-        path: '/admin/reports',
-        label: 'Отчёты',
-        icon: FileBarChart,
+        path:
+          '/admin/reports',
+
+        label:
+          t(
+            'navigation.reports',
+          ),
+
+        icon:
+          FileBarChart,
       },
 
       {
-        path: '/profile',
-        label: 'Профиль',
-        icon: User,
+        path:
+          '/profile',
+
+        label:
+          t(
+            'navigation.profile',
+          ),
+
+        icon:
+          User,
       },
     ],
 
     extra: [
+
       {
-        path: '/admin/schedule',
-        label: 'Расписание школы',
-        icon: CalendarDays,
+        path:
+          '/admin/school-year',
+
+        label:
+          t(
+            'navigation.schoolYear',
+          ),
+
+        icon:
+          CalendarDays,
       },
 
       {
-        path: '/admin/attendance',
-        label: 'Посещаемость',
-        icon: CheckCircle2,
+        path:
+          '/admin/schedule',
+
+        label:
+          t(
+            'navigation.schoolSchedule',
+          ),
+
+        icon:
+          CalendarDays,
       },
 
       {
-        path: '/admin/workload',
-        label: 'Нагрузка',
-        icon: BriefcaseBusiness,
+        path:
+          '/admin/attendance',
+
+        label:
+          t(
+            'navigation.attendance',
+          ),
+
+        icon:
+          CheckCircle2,
       },
 
       {
-        path: '/admin/substitutions',
-        label: 'Замены',
-        icon: Users,
+        path:
+          '/admin/workload',
+
+        label:
+          t(
+            'navigation.workload',
+          ),
+
+        icon:
+          BriefcaseBusiness,
       },
 
       {
-        path: '/admin/staff',
-        label: 'Сотрудники',
-        icon: UserCog,
+        path:
+          '/admin/substitutions',
+
+        label:
+          t(
+            'navigation.substitutions',
+          ),
+
+        icon:
+          Users,
       },
 
       {
-        path: '/admin/classes',
-        label: 'Классы',
-        icon: School,
+        path:
+          '/admin/staff',
+
+        label:
+          t(
+            'navigation.staff',
+          ),
+
+        icon:
+          UserCog,
       },
 
       {
-        path: '/messages',
-        label: 'Сообщения',
-        icon: MessageCircle,
+        path:
+          '/admin/classes',
+
+        label:
+          t(
+            'navigation.classes',
+          ),
+
+        icon:
+          School,
+      },
+
+      {
+        path:
+          '/messages',
+
+        label:
+          t(
+            'navigation.messages',
+          ),
+
+        icon:
+          MessageCircle,
       },
     ],
   }
 }
 
+
 /* ========================================
    PARTNER
 ======================================== */
 
-function createPartnerMenu() {
+function createPartnerMenu(
+  t,
+) {
   return {
     main: [
       {
-        path: '/partner-dashboard',
-        label: 'Главная',
-        icon: Home,
+        path:
+          '/partner-dashboard',
+
+        label:
+          t(
+            'navigation.home',
+          ),
+
+        icon:
+          Home,
       },
 
       {
-        path: '/partner-offers',
-        label: 'Предложения',
-        icon: Store,
+        path:
+          '/partner-offers',
+
+        label:
+          t(
+            'navigation.offers',
+          ),
+
+        icon:
+          Store,
       },
 
       {
-        path: '/partner-coupons',
-        label: 'Купоны',
-        icon: CheckSquare,
+        path:
+          '/partner-coupons',
+
+        label:
+          t(
+            'navigation.coupons',
+          ),
+
+        icon:
+          CheckSquare,
       },
 
       {
-        path: '/partner-stats',
-        label: 'Статистика',
-        icon: BarChart3,
+        path:
+          '/partner-stats',
+
+        label:
+          t(
+            'navigation.statistics',
+          ),
+
+        icon:
+          BarChart3,
       },
 
       {
-        path: '/profile',
-        label: 'Профиль',
-        icon: User,
+        path:
+          '/profile',
+
+        label:
+          t(
+            'navigation.profile',
+          ),
+
+        icon:
+          User,
       },
     ],
 
@@ -1021,58 +2233,111 @@ function createPartnerMenu() {
   }
 }
 
+
 /* ========================================
    SUPER ADMIN
 ======================================== */
 
-function createSuperAdminMenu() {
+function createSuperAdminMenu(
+  t,
+) {
   return {
     main: [
       {
-        path: '/super-admin',
-        label: 'Главная',
-        icon: LayoutDashboard,
+        path:
+          '/super-admin',
+
+        label:
+          t(
+            'navigation.home',
+          ),
+
+        icon:
+          LayoutDashboard,
       },
 
       {
-        path: '/super-admin/schools',
-        label: 'Школы',
-        icon: Building2,
+        path:
+          '/super-admin/schools',
+
+        label:
+          t(
+            'navigation.schools',
+          ),
+
+        icon:
+          Building2,
       },
 
       {
-        path: '/super-admin/users',
-        label: 'Пользователи',
-        icon: Users,
+        path:
+          '/super-admin/users',
+
+        label:
+          t(
+            'navigation.users',
+          ),
+
+        icon:
+          Users,
       },
 
       {
-        path: '/super-admin/analytics',
-        label: 'Аналитика',
-        icon: ChartNoAxesCombined,
+        path:
+          '/super-admin/analytics',
+
+        label:
+          t(
+            'navigation.analytics',
+          ),
+
+        icon:
+          ChartNoAxesCombined,
       },
 
       {
-        path: '/profile',
-        label: 'Профиль',
-        icon: User,
+        path:
+          '/profile',
+
+        label:
+          t(
+            'navigation.profile',
+          ),
+
+        icon:
+          User,
       },
     ],
 
     extra: [
       {
-        path: '/super-admin/partners',
-        label: 'Партнёры',
-        icon: Store,
+        path:
+          '/super-admin/partners',
+
+        label:
+          t(
+            'navigation.partners',
+          ),
+
+        icon:
+          Store,
       },
 
       {
-        path: '/super-admin/settings',
-        label: 'Настройки системы',
-        icon: Settings,
+        path:
+          '/super-admin/settings',
+
+        label:
+          t(
+            'navigation.systemSettings',
+          ),
+
+        icon:
+          Settings,
       },
     ],
   }
 }
+
 
 export default Layout

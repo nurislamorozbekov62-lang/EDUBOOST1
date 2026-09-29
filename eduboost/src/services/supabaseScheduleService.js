@@ -1275,6 +1275,25 @@ function throwScheduleDatabaseError(
     )
   }
 
+  /*
+    Сработал уникальный индекс
+    schedule_lessons_unique_slot:
+
+    (school_id, lower(btrim(class_name)), weekday, lesson_number)
+  */
+  if (
+    message.includes(
+      'schedule_lessons_unique_slot',
+    ) ||
+    message.includes(
+      'duplicate key',
+    )
+  ) {
+    throw new Error(
+      'В этом классе уже есть урок с таким номером в этот день',
+    )
+  }
+
   throw new Error(
     error?.message ||
       'Не удалось сохранить урок',

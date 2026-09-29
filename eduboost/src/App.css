@@ -24004,3 +24004,166 @@ select:focus {
     flex-direction: column;
   }
 }
+/* =========================================================
+   EDUBOOST MOBILE HEADER V2
+========================================================= */
+
+@media (max-width: 768px) {
+  .mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+
+    min-height: 58px;
+
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    align-items: center;
+
+    gap: 10px;
+
+    padding:
+      max(8px, env(safe-area-inset-top))
+      14px
+      8px;
+
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+
+    border-bottom: 1px solid #eef2f7;
+  }
+
+
+  .mobile-header-button {
+    width: 42px;
+    height: 42px;
+
+    padding: 0;
+
+    border: none;
+    border-radius: 12px;
+
+    display: grid;
+    place-items: center;
+
+    background: transparent;
+    color: #0f274d;
+
+    cursor: pointer;
+
+    transition:
+      background 0.18s ease,
+      color 0.18s ease,
+      transform 0.18s ease;
+  }
+
+
+  .mobile-header-button:active {
+    transform: scale(0.94);
+    background: #eef5ff;
+  }
+
+
+  .mobile-header-button--active {
+    color: #2563eb;
+    background: #eff6ff;
+  }
+
+
+  .mobile-brand {
+    min-width: 0;
+
+    justify-self: center;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 7px;
+
+    border: none;
+    padding: 6px 8px;
+
+    background: transparent;
+    color: #0f274d;
+
+    cursor: pointer;
+
+    font: inherit;
+    font-size: 17px;
+    font-weight: 800;
+  }
+
+
+  .mobile-brand span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+
+    /*
+      Вот нормальное расстояние
+      между шестерёнкой и уведомлениями.
+    */
+    gap: 10px;
+
+    justify-self: end;
+  }
+
+
+  .mobile-notification-button {
+    position: relative;
+  }
+
+
+  .mobile-notification-button .notification-dot {
+    position: absolute;
+
+    top: 8px;
+    right: 8px;
+
+    width: 7px;
+    height: 7px;
+
+    border-radius: 50%;
+
+    background: #ef4444;
+
+    border: 2px solid #ffffff;
+  }
+}
+
+
+/* На совсем маленьких телефонах */
+@media (max-width: 360px) {
+  .mobile-header {
+    grid-template-columns: 44px 1fr auto;
+
+    padding-left: 8px;
+    padding-right: 8px;
+
+    gap: 5px;
+  }
+
+
+  .mobile-header-button {
+    width: 38px;
+    height: 38px;
+  }
+
+
+  .mobile-header-actions {
+    gap: 6px;
+  }
+
+
+  .mobile-brand {
+    font-size: 15px;
+  }
+}

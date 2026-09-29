@@ -5,16 +5,9 @@ import {
 } from 'react'
 
 import {
-  useNavigate,
-} from 'react-router-dom'
-
-import {
-  BookOpen,
   CalendarPlus,
   Check,
-  ChevronRight,
-  Pencil,
-  Plus,
+  RefreshCcw,
   Trash2,
   X,
 } from 'lucide-react'
@@ -23,29 +16,22 @@ import {
   useAuth,
 } from '../context/AuthContext'
 
-import TeacherAttendancePanel
-  from '../components/TeacherAttendancePanel'
-
-import TeacherJournalMobile
-  from '../components/TeacherJournalMobile'
+import {
+  supabase,
+} from '../lib/supabase'
 
 import {
-  GRADE_TYPES,
   calculateWeightedAverage,
   confirmQuarterGrade,
-  createSupabaseGrade,
+  createSupabaseJournalLessonGrade,
   deleteSupabaseGrade,
   getSuggestedQuarterGrade,
-  getSupabaseSchoolClassesForTeacher,
-  getSupabaseStudentsByClass,
-  saveGradingSettings,
 } from '../services/supabaseJournalService'
 
 import {
   getGradingMinimum,
   getSupabaseClassGrades,
   getSupabaseClassQuarterGrades,
-  updateSupabaseGrade,
 } from '../services/supabaseJournalClassService'
 
 import {
@@ -53,20 +39,106 @@ import {
   getSupabaseJournalLessons,
 } from '../services/supabaseJournalLessonService'
 
+import {
+  getSupabaseStudentsByClass,
+} from '../services/schoolRosterService'
 
-const SUBJECTS = [
-  'Математика',
-  'Русский язык',
-  'Кыргызский язык',
-  'Английский язык',
-  'История',
-  'Информатика',
-  'Физика',
-  'Химия',
-  'Биология',
-  'География',
-  'Физическая культура',
-  'Другое',
+import {
+  getTeacherWorkloads,
+} from '../services/supabaseWorkloadService'
+
+import {
+  getSupabaseClassAttendance,
+  saveSupabaseAttendanceRecord,
+  updateSupabaseAttendanceRecord,
+} from '../services/supabaseAttendanceService'
+
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const QUICK_GRADES = [
+  5,
+  4,
+  3,
+  2,
+]
+
+
+const ATTENDANCE_OPTIONS = [
+  {
+    value: 'present',
+    short: '+',
+    label: 'Присутствовал',
+  },
+
+  {
+    value: 'absent',
+    short: '−',
+    label: 'Отсутствовал',
+  },
+
+  {
+    value: 'excused',
+    short: 'УВ',
+    label: 'Уважительная причина',
+  },
+
+  {
+    value: 'sick',
+    short: 'Б',
+    label: 'Болел',
+  },
+
+  {
+    value: 'late',
+    short: 'Оп',
+    label: 'Опоздал',
+  },
+]
+
+
+const WORK_TYPES = [
+  {
+    value: 'oral',
+    label: 'Устный ответ',
+  },
+
+  {
+    value: 'homework',
+    label: 'Домашняя работа',
+  },
+
+  {
+    value: 'control',
+    label: 'Контрольная работа',
+  },
+
+  {
+    value: 'test',
+    label: 'Тест',
+  },
+
+  {
+    value: 'independent',
+    label: 'Самостоятельная работа',
+  },
+
+  {
+    value: 'practical',
+    label: 'Практическая работа',
+  },
+
+  {
+    value: 'sor',
+    label: 'СОР',
+  },
+
+  {
+    value: 'soch',
+    label: 'СОЧ',
+  },
 ]
 
 
@@ -79,22 +151,21 @@ function TeacherJournalPage() {
     user,
   } = useAuth()
 
-  const navigate =
-    useNavigate()
+
+  const isTeacher =
+    user?.role ===
+    'Учитель'
 
 
-  const [
-    activeTab,
-    setActiveTab,
-  ] = useState(
-    'grades',
-  )
-
+  /* =======================================================
+     MAIN DATA
+  ======================================================= */
 
   const [
-    classes,
-    setClasses,
+    workloads,
+    setWorkloads,
   ] = useState([])
+
 
   const [
     students,
@@ -103,34 +174,44 @@ function TeacherJournalPage() {
 
 
   const [
-    isMobile,
-    setIsMobile,
-  ] = useState(() => {
-    if (
-      typeof window ===
-      'undefined'
-    ) {
-      return false
-    }
+    lessons,
+    setLessons,
+  ] = useState([])
 
-    return (
-      window.innerWidth <=
-      760
-    )
-  })
 
+  const [
+    grades,
+    setGrades,
+  ] = useState([])
+
+
+  const [
+    attendance,
+    setAttendance,
+  ] = useState([])
+
+
+  const [
+    quarterGrades,
+    setQuarterGrades,
+  ] = useState([])
+
+
+  /* =======================================================
+     FILTERS
+  ======================================================= */
 
   const [
     selectedClass,
     setSelectedClass,
   ] = useState('')
 
+
   const [
     selectedSubject,
     setSelectedSubject,
-  ] = useState(
-    'Математика',
-  )
+  ] = useState('')
+
 
   const [
     selectedQuarter,
@@ -139,36 +220,50 @@ function TeacherJournalPage() {
 
 
   const [
-    grades,
-    setGrades,
-  ] = useState([])
-
-  const [
-    lessons,
-    setLessons,
-  ] = useState([])
-
-  const [
-    finalQuarterGrades,
-    setFinalQuarterGrades,
-  ] = useState([])
-
-
-  const [
     minimumGrades,
     setMinimumGrades,
   ] = useState(3)
 
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   const [
-    loading,
-    setLoading,
+    initialLoading,
+    setInitialLoading,
   ] = useState(true)
+
+
+  const [
+    journalLoading,
+    setJournalLoading,
+  ] = useState(false)
+
+
+  const [
+    journalRefreshing,
+    setJournalRefreshing,
+  ] = useState(false)
+
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false)
+
+
+  const [
+    syncStatus,
+    setSyncStatus,
+  ] = useState('idle')
+
 
   const [
     error,
     setError,
   ] = useState('')
+
 
   const [
     success,
@@ -177,14 +272,10 @@ function TeacherJournalPage() {
 
 
   const [
-    gradeModal,
-    setGradeModal,
+    selectedCell,
+    setSelectedCell,
   ] = useState(null)
 
-  const [
-    selectedGrade,
-    setSelectedGrade,
-  ] = useState(null)
 
   const [
     lessonModalOpen,
@@ -193,179 +284,233 @@ function TeacherJournalPage() {
 
 
   /* =======================================================
-     RESPONSIVE
-  ======================================================= */
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(
-        window.innerWidth <=
-          760,
-      )
-    }
-
-
-    handleResize()
-
-
-    window.addEventListener(
-      'resize',
-      handleResize,
-    )
-
-
-    return () => {
-      window.removeEventListener(
-        'resize',
-        handleResize,
-      )
-    }
-  }, [])
-
-
-  /* =======================================================
-     LOAD CLASSES
+     WORKLOAD
   ======================================================= */
 
   useEffect(() => {
     if (
       !user?.id ||
-      user.role !==
-        'Учитель'
+      !user?.schoolId ||
+      !isTeacher
     ) {
       return
     }
 
-
-    void loadClasses()
+    void loadWorkloads()
   }, [
     user?.id,
-    user?.school,
     user?.schoolId,
     user?.role,
   ])
 
 
-  /* =======================================================
-     LOAD STUDENTS
-  ======================================================= */
-
-  useEffect(() => {
-    if (
-      !selectedClass ||
-      !user?.id
-    ) {
-      setStudents([])
-
-      return
-    }
-
-
-    void loadStudents()
-  }, [
-    selectedClass,
-    user?.id,
-    user?.school,
-    user?.schoolId,
-  ])
-
-
-  /* =======================================================
-     LOAD JOURNAL
-  ======================================================= */
-
-  useEffect(() => {
-    if (
-      activeTab !==
-        'grades' ||
-      !selectedClass ||
-      !selectedSubject ||
-      !user?.id
-    ) {
-      return
-    }
-
-
-    void loadJournal()
-  }, [
-    activeTab,
-    selectedClass,
-    selectedSubject,
-    selectedQuarter,
-    user?.id,
-  ])
-
-
-  async function loadClasses() {
+  async function loadWorkloads() {
     try {
-      setLoading(true)
+      setInitialLoading(true)
       setError('')
 
 
-      const data =
-        await getSupabaseSchoolClassesForTeacher(
+      const result =
+        await getTeacherWorkloads(
           user,
         )
 
 
-      const safeData =
-        Array.isArray(
-          data,
+      const academicYear =
+        getCurrentAcademicYear()
+
+
+      const safe =
+        (
+          Array.isArray(result)
+            ? result
+            : []
+        ).filter(
+          (
+            item,
+          ) =>
+            !item.academicYear ||
+            item.academicYear ===
+              academicYear,
         )
-          ? data
-          : []
 
 
-      setClasses(
-        safeData,
+      setWorkloads(
+        safe,
       )
 
 
-      if (
-        safeData.length >
-        0
-      ) {
-        setSelectedClass(
-          (
-            currentClass,
-          ) => {
-            if (
-              currentClass &&
-              safeData.includes(
-                currentClass,
-              )
-            ) {
-              return currentClass
-            }
+      const classNames = [
+        ...new Set(
+          safe
+            .map(
+              (
+                item,
+              ) =>
+                String(
+                  item.className ||
+                    '',
+                ).trim(),
+            )
+            .filter(Boolean),
+        ),
+      ].sort(
+        compareClasses,
+      )
 
 
-            return safeData[0]
-          },
-        )
-      } else {
-        setSelectedClass('')
-      }
+      setSelectedClass(
+        (
+          current,
+        ) =>
+          current &&
+          classNames.includes(
+            current,
+          )
+            ? current
+            : classNames[0] ||
+              '',
+      )
     } catch (
       loadError
     ) {
-      setClasses([])
+      console.error(
+        'Workloads:',
+        loadError,
+      )
+
+      setWorkloads([])
+      setSelectedClass('')
 
       setError(
         loadError?.message ||
-          'Не удалось загрузить классы.',
+          'Не удалось загрузить нагрузку учителя.',
       )
     } finally {
-      setLoading(false)
+      setInitialLoading(false)
     }
   }
 
 
+  const classes =
+    useMemo(
+      () =>
+        [
+          ...new Set(
+            workloads
+              .map(
+                (
+                  item,
+                ) =>
+                  String(
+                    item.className ||
+                      '',
+                  ).trim(),
+              )
+              .filter(Boolean),
+          ),
+        ].sort(
+          compareClasses,
+        ),
+      [
+        workloads,
+      ],
+    )
+
+
+  const subjects =
+    useMemo(() => {
+      if (
+        !selectedClass
+      ) {
+        return []
+      }
+
+
+      return [
+        ...new Set(
+          workloads
+            .filter(
+              (
+                item,
+              ) =>
+                String(
+                  item.className ||
+                    '',
+                ).trim() ===
+                String(
+                  selectedClass,
+                ).trim(),
+            )
+            .map(
+              (
+                item,
+              ) =>
+                String(
+                  item.subject ||
+                    '',
+                ).trim(),
+            )
+            .filter(Boolean),
+        ),
+      ].sort(
+        (
+          first,
+          second,
+        ) =>
+          first.localeCompare(
+            second,
+            'ru',
+          ),
+      )
+    }, [
+      workloads,
+      selectedClass,
+    ])
+
+
+  useEffect(() => {
+    setSelectedSubject(
+      (
+        current,
+      ) =>
+        current &&
+        subjects.includes(
+          current,
+        )
+          ? current
+          : subjects[0] ||
+            '',
+    )
+  }, [
+    subjects,
+  ])
+
+
+  /* =======================================================
+     STUDENTS
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !user?.id ||
+      !selectedClass
+    ) {
+      setStudents([])
+      return
+    }
+
+    void loadStudents()
+  }, [
+    user?.id,
+    user?.schoolId,
+    selectedClass,
+  ])
+
+
   async function loadStudents() {
     try {
-      setError('')
-
-
-      const data =
+      const result =
         await getSupabaseStudentsByClass(
           user,
           selectedClass,
@@ -373,34 +518,176 @@ function TeacherJournalPage() {
 
 
       setStudents(
-        Array.isArray(
-          data,
-        )
-          ? data
+        Array.isArray(result)
+          ? result
           : [],
       )
     } catch (
       loadError
     ) {
-      setStudents([])
+      console.error(
+        'Students:',
+        loadError,
+      )
 
+      /*
+        Не очищаем уже показанный
+        список при временном сбое.
+      */
       setError(
         loadError?.message ||
-          'Не удалось загрузить учеников.',
+          'Не удалось обновить список учеников.',
       )
     }
   }
 
 
-  async function loadJournal() {
+  /* =======================================================
+     SCHEDULE -> JOURNAL
+
+     ВАЖНО:
+     эта операция НЕ блокирует
+     загрузку существующего журнала.
+  ======================================================= */
+
+  async function syncTodaySchedule() {
+    if (
+      !user?.id
+    ) {
+      return
+    }
+
+
     try {
-      setLoading(true)
+      setSyncStatus(
+        'loading',
+      )
+
+
+      const {
+        error:
+          syncError,
+      } =
+        await supabase.rpc(
+          'sync_my_schedule_to_journal',
+          {
+            p_lesson_date:
+              getToday(),
+
+            p_quarter:
+              Number(
+                selectedQuarter,
+              ),
+          },
+        )
+
+
+      if (
+        syncError
+      ) {
+        throw syncError
+      }
+
+
+      setSyncStatus(
+        'success',
+      )
+    } catch (
+      syncError
+    ) {
+      console.error(
+        'Schedule -> journal:',
+        syncError,
+      )
+
+      setSyncStatus(
+        'error',
+      )
+    }
+  }
+
+
+  /* =======================================================
+     JOURNAL LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    if (
+      !user?.id ||
+      !selectedClass ||
+      !selectedSubject
+    ) {
+      setLessons([])
+      setGrades([])
+      setAttendance([])
+      setQuarterGrades([])
+
+      return
+    }
+
+
+    void loadJournal()
+  }, [
+    user?.id,
+    user?.schoolId,
+    selectedClass,
+    selectedSubject,
+    selectedQuarter,
+  ])
+
+
+  async function loadJournal({
+    silent = false,
+  } = {}) {
+    if (
+      !user?.id ||
+      !selectedClass ||
+      !selectedSubject
+    ) {
+      return
+    }
+
+
+    const alreadyHasData =
+      lessons.length > 0 ||
+      grades.length > 0
+
+
+    try {
       setError('')
 
 
+      if (
+        !silent &&
+        !alreadyHasData
+      ) {
+        setJournalLoading(
+          true,
+        )
+      } else {
+        setJournalRefreshing(
+          true,
+        )
+      }
+
+
+      /*
+        Не ждём sync.
+        Существующий журнал должен
+        открываться независимо.
+      */
+      void syncTodaySchedule()
+
+
+      /*
+        Критичные данные:
+        оценки + уроки.
+
+        Они идут одновременно.
+      */
       const [
-        gradeRows,
-        lessonRows,
+        gradeResult,
+        lessonResult,
       ] =
         await Promise.all([
           getSupabaseClassGrades({
@@ -433,347 +720,1135 @@ function TeacherJournalPage() {
         ])
 
 
-      setGrades(
-        Array.isArray(
-          gradeRows,
+      const ownGrades =
+        filterTeacherRows(
+          gradeResult,
+          user.id,
         )
-          ? gradeRows
-          : [],
-      )
 
+
+      const ownLessons =
+        filterTeacherRows(
+          lessonResult,
+          user.id,
+        )
+
+
+      /*
+        Основная таблица появляется
+        сразу после двух запросов.
+      */
+      setGrades(
+        ownGrades,
+      )
 
       setLessons(
-        Array.isArray(
-          lessonRows,
-        )
-          ? lessonRows
-          : [],
+        ownLessons,
       )
 
 
-      try {
-        const finalRows =
-          await getSupabaseClassQuarterGrades({
-            teacher:
-              user,
-
-            className:
-              selectedClass,
-
-            subject:
-              selectedSubject,
-
-            quarter:
-              selectedQuarter,
-          })
+      setJournalLoading(
+        false,
+      )
 
 
-        setFinalQuarterGrades(
-          Array.isArray(
-            finalRows,
-          )
-            ? finalRows
-            : [],
-        )
-      } catch (
-        quarterError
-      ) {
-        console.error(
-          quarterError,
-        )
-
-        setFinalQuarterGrades(
-          [],
-        )
-      }
-
-
-      try {
-        const minimum =
-          await getGradingMinimum({
-            teacher:
-              user,
-
-            className:
-              selectedClass,
-
-            subject:
-              selectedSubject,
-          })
-
-
-        setMinimumGrades(
-          Number(
-            minimum,
-          ) ||
-            3,
-        )
-      } catch (
-        settingsError
-      ) {
-        console.error(
-          settingsError,
-        )
-
-        setMinimumGrades(
-          3,
-        )
-      }
+      /*
+        Остальное грузится фоном.
+      */
+      void loadBackgroundData(
+        ownLessons,
+        ownGrades,
+      )
     } catch (
       loadError
     ) {
+      console.error(
+        'Journal:',
+        loadError,
+      )
+
+
+      /*
+        Старые данные НЕ удаляем.
+        При плохом интернете журнал
+        остаётся на экране.
+      */
       setError(
         loadError?.message ||
-          'Не удалось загрузить журнал.',
+          'Не удалось обновить журнал.',
       )
     } finally {
-      setLoading(false)
+      setJournalLoading(
+        false,
+      )
+
+      setJournalRefreshing(
+        false,
+      )
     }
   }
 
 
   /* =======================================================
-     JOURNAL COLUMNS
+     BACKGROUND DATA
+  ======================================================= */
+
+  async function loadBackgroundData(
+    currentLessons,
+    currentGrades,
+  ) {
+    const results =
+      await Promise.allSettled([
+        loadQuarterGrades(),
+
+        loadMinimumSetting(),
+
+        loadAttendance(
+          currentLessons,
+          currentGrades,
+        ),
+      ])
+
+
+    results.forEach(
+      (
+        result,
+      ) => {
+        if (
+          result.status ===
+          'rejected'
+        ) {
+          console.error(
+            'Journal background:',
+            result.reason,
+          )
+        }
+      },
+    )
+  }
+
+
+  async function loadQuarterGrades() {
+    try {
+      const result =
+        await getSupabaseClassQuarterGrades({
+          teacher:
+            user,
+
+          className:
+            selectedClass,
+
+          subject:
+            selectedSubject,
+
+          quarter:
+            selectedQuarter,
+        })
+
+
+      setQuarterGrades(
+        filterTeacherRows(
+          result,
+          user.id,
+        ),
+      )
+    } catch (
+      loadError
+    ) {
+      console.error(
+        'Quarter grades:',
+        loadError,
+      )
+    }
+  }
+
+
+  async function loadMinimumSetting() {
+    try {
+      const result =
+        await getGradingMinimum({
+          teacher:
+            user,
+
+          className:
+            selectedClass,
+
+          subject:
+            selectedSubject,
+        })
+
+
+      const value =
+        Number(
+          result,
+        )
+
+
+      setMinimumGrades(
+        Number.isFinite(
+          value,
+        ) &&
+        value > 0
+          ? value
+          : 3,
+      )
+    } catch (
+      loadError
+    ) {
+      console.error(
+        'Minimum grades:',
+        loadError,
+      )
+
+      setMinimumGrades(
+        3,
+      )
+    }
+  }
+
+
+  /* =======================================================
+     ATTENDANCE LOAD
+  ======================================================= */
+
+  async function loadAttendance(
+    currentLessons = lessons,
+    currentGrades = grades,
+  ) {
+    const dates = [
+      ...(
+        currentLessons ||
+        []
+      ).map(
+        (
+          lesson,
+        ) =>
+          lesson.date,
+      ),
+
+      ...(
+        currentGrades ||
+        []
+      ).map(
+        (
+          grade,
+        ) =>
+          grade.date,
+      ),
+    ]
+      .filter(Boolean)
+      .sort()
+
+
+    if (
+      dates.length ===
+      0
+    ) {
+      setAttendance([])
+      return
+    }
+
+
+    try {
+      const result =
+        await getSupabaseClassAttendance({
+          teacher:
+            user,
+
+          className:
+            selectedClass,
+
+          subject:
+            selectedSubject,
+
+          dateFrom:
+            dates[0],
+
+          dateTo:
+            dates[
+              dates.length -
+                1
+            ],
+        })
+
+
+      setAttendance(
+        filterTeacherRows(
+          result,
+          user.id,
+        ),
+      )
+    } catch (
+      loadError
+    ) {
+      console.error(
+        'Attendance:',
+        loadError,
+      )
+
+      /*
+        Старую посещаемость
+        намеренно не удаляем.
+      */
+    }
+  }
+
+
+  /* =======================================================
+     REFRESH
+
+     Старый журнал остаётся на экране.
+  ======================================================= */
+
+  async function handleRefresh() {
+    if (
+      saving ||
+      journalRefreshing
+    ) {
+      return
+    }
+
+
+    setSuccess('')
+    setError('')
+
+
+    setJournalRefreshing(
+      true,
+    )
+
+
+    await Promise.allSettled([
+      loadStudents(),
+
+      loadJournal({
+        silent:
+          true,
+      }),
+    ])
+
+
+    setJournalRefreshing(
+      false,
+    )
+  }
+
+
+  /* =======================================================
+     COLUMNS
+
+     Колонки создаются ТОЛЬКО
+     настоящими journal_lessons.
+
+     Legacy grades не создают
+     отдельную "мёртвую" дату.
   ======================================================= */
 
   const columns =
     useMemo(() => {
-      const map =
-        new Map()
+      const result = []
+
+      const ids =
+        new Set()
 
 
       lessons.forEach(
-        (lesson) => {
+        (
+          lesson,
+        ) => {
           if (
+            !lesson?.id ||
             !lesson?.date
           ) {
             return
           }
 
 
-          map.set(
-            lesson.date,
-            {
-              date:
-                lesson.date,
-
-              topic:
-                lesson.topic ||
-                '',
-
-              lessonId:
-                lesson.id,
-
-              isLesson:
-                true,
-            },
-          )
-        },
-      )
+          const id =
+            String(
+              lesson.id,
+            )
 
 
-      grades.forEach(
-        (grade) => {
           if (
-            !grade.date ||
-            map.has(
-              grade.date,
+            ids.has(
+              id,
             )
           ) {
             return
           }
 
 
+          ids.add(
+            id,
+          )
+
+
+          result.push({
+            key:
+              `lesson:${id}`,
+
+            lessonId:
+              lesson.id,
+
+            date:
+              lesson.date,
+
+            topic:
+              lesson.topic ||
+              '',
+
+            scheduleLessonId:
+              lesson.scheduleLessonId ||
+              null,
+          })
+        },
+      )
+
+
+      return result.sort(
+        (
+          first,
+          second,
+        ) => {
+          const dateCompare =
+            String(
+              first.date,
+            ).localeCompare(
+              String(
+                second.date,
+              ),
+            )
+
+
+          if (
+            dateCompare !==
+            0
+          ) {
+            return dateCompare
+          }
+
+
+          return String(
+            first.lessonId,
+          ).localeCompare(
+            String(
+              second.lessonId,
+            ),
+          )
+        },
+      )
+    }, [
+      lessons,
+    ])
+
+
+  /* =======================================================
+     ATTENDANCE MAP
+  ======================================================= */
+
+  const attendanceMap =
+    useMemo(() => {
+      const map =
+        new Map()
+
+
+      attendance.forEach(
+        (
+          record,
+        ) => {
           map.set(
-            grade.date,
-            {
-              date:
-                grade.date,
-
-              topic:
-                grade.topic ||
-                '',
-
-              lessonId:
-                null,
-
-              isLesson:
-                false,
-            },
+            createAttendanceKey(
+              record.studentId,
+              record.date,
+            ),
+            record,
           )
         },
       )
 
 
-      return [
-        ...map.values(),
-      ].sort(
-        (
-          first,
-          second,
-        ) =>
-          String(
-            first.date,
-          ).localeCompare(
-            String(
-              second.date,
-            ),
-          ),
-      )
+      return map
     }, [
-      lessons,
-      grades,
+      attendance,
     ])
 
 
   /* =======================================================
-     STUDENT ROWS
+     ROWS
   ======================================================= */
 
   const rows =
-    useMemo(() => {
-      return students.map(
-        (student) => {
-          const studentGrades =
-            grades.filter(
-              (grade) =>
-                String(
-                  grade.studentId,
-                ) ===
-                String(
-                  student.id,
-                ),
-            )
-
-
-          const average =
-            calculateWeightedAverage(
-              studentGrades,
-            )
-
-
-          const isAttested =
-            studentGrades.length >=
-            Number(
-              minimumGrades,
-            )
-
-
-          const predicted =
-            isAttested
-              ? getSuggestedQuarterGrade(
-                  average,
-                )
-              : null
-
-
-          const finalRow =
-            finalQuarterGrades.find(
-              (item) =>
-                String(
-                  item.studentId,
-                ) ===
-                String(
-                  student.id,
-                ),
-            )
-
-
-          return {
+    useMemo(
+      () =>
+        students.map(
+          (
             student,
+          ) => {
+            const studentGrades =
+              grades.filter(
+                (
+                  grade,
+                ) =>
+                  String(
+                    grade.studentId,
+                  ) ===
+                  String(
+                    student.id,
+                  ),
+              )
 
-            grades:
-              studentGrades,
 
-            average,
+            const average =
+              calculateWeightedAverage(
+                studentGrades,
+              )
 
-            predicted,
 
-            finalGrade:
-              finalRow
-                ?.finalGrade ??
-              null,
+            const isAttested =
+              studentGrades.length >=
+              minimumGrades
 
-            isAttested,
 
-            missing:
-              Math.max(
-                Number(
-                  minimumGrades,
-                ) -
-                  studentGrades.length,
-                0,
-              ),
-          }
-        },
-      )
-    }, [
-      students,
-      grades,
-      finalQuarterGrades,
-      minimumGrades,
-    ])
+            const predicted =
+              isAttested
+                ? getSuggestedQuarterGrade(
+                    average,
+                  )
+                : null
+
+
+            const finalRow =
+              quarterGrades.find(
+                (
+                  item,
+                ) =>
+                  String(
+                    item.studentId,
+                  ) ===
+                  String(
+                    student.id,
+                  ),
+              )
+
+
+            return {
+              student,
+
+              grades:
+                studentGrades,
+
+              average,
+
+              predicted,
+
+              finalGrade:
+                finalRow?.finalGrade ??
+                null,
+
+              isAttested,
+
+              missing:
+                Math.max(
+                  minimumGrades -
+                    studentGrades.length,
+                  0,
+                ),
+            }
+          },
+        ),
+      [
+        students,
+        grades,
+        quarterGrades,
+        minimumGrades,
+      ],
+    )
 
 
   /* =======================================================
-     SETTINGS
+     OPEN CELL
   ======================================================= */
 
-  async function handleSaveMinimum() {
+  function openCell(
+    row,
+    column,
+  ) {
+    setError('')
+    setSuccess('')
+
+
+    if (
+      !column?.lessonId
+    ) {
+      setError(
+        'Для этой даты нет связанного урока.',
+      )
+
+      return
+    }
+
+
+    const currentAttendance =
+      attendanceMap.get(
+        createAttendanceKey(
+          row.student.id,
+          column.date,
+        ),
+      ) ||
+      null
+
+
+    setSelectedCell({
+      student:
+        row.student,
+
+      column,
+
+      grades:
+        getCellGrades(
+          row.grades,
+          column,
+        ),
+
+      attendance:
+        currentAttendance,
+    })
+  }
+
+
+  /* =======================================================
+     ATTENDANCE SAVE
+  ======================================================= */
+
+  async function setAttendanceStatus(
+    status,
+  ) {
+    if (
+      !selectedCell
+    ) {
+      return
+    }
+
+
     try {
+      setSaving(true)
       setError('')
-      setSuccess('')
 
 
-      const value =
-        Number(
-          minimumGrades,
-        )
+      const existing =
+        selectedCell.attendance
 
 
       if (
-        !Number.isInteger(
-          value,
-        ) ||
-        value < 1 ||
-        value > 30
+        existing?.id
       ) {
-        throw new Error(
-          'Минимум должен быть от 1 до 30.',
+        await updateSupabaseAttendanceRecord(
+          existing.id,
+          {
+            subject:
+              selectedSubject,
+
+            status,
+
+            comment:
+              existing.comment ||
+              '',
+
+            date:
+              selectedCell
+                .column
+                .date,
+          },
+        )
+      } else {
+        await saveSupabaseAttendanceRecord(
+          user,
+          selectedCell.student,
+          {
+            subject:
+              selectedSubject,
+
+            status,
+
+            comment:
+              '',
+
+            date:
+              selectedCell
+                .column
+                .date,
+          },
         )
       }
 
 
-      await saveGradingSettings(
-        user,
-        selectedClass,
-        selectedSubject,
-        value,
+      const studentName =
+        selectedCell
+          .student
+          .name
+
+
+      /*
+        Оптимистично обновляем UI
+        сразу, без ожидания полного
+        reloadJournal.
+      */
+      setAttendance(
+        (
+          current,
+        ) => {
+          const key =
+            createAttendanceKey(
+              selectedCell
+                .student
+                .id,
+              selectedCell
+                .column
+                .date,
+            )
+
+
+          const exists =
+            current.some(
+              (
+                item,
+              ) =>
+                createAttendanceKey(
+                  item.studentId,
+                  item.date,
+                ) ===
+                key,
+            )
+
+
+          if (
+            exists
+          ) {
+            return current.map(
+              (
+                item,
+              ) =>
+                createAttendanceKey(
+                  item.studentId,
+                  item.date,
+                ) ===
+                key
+                  ? {
+                      ...item,
+                      status,
+                    }
+                  : item,
+            )
+          }
+
+
+          return [
+            ...current,
+            {
+              id:
+                existing?.id ||
+                `temp-${Date.now()}`,
+
+              studentId:
+                selectedCell
+                  .student
+                  .id,
+
+              date:
+                selectedCell
+                  .column
+                  .date,
+
+              status,
+
+              teacherId:
+                user.id,
+
+              subject:
+                selectedSubject,
+            },
+          ]
+        },
+      )
+
+
+      setSelectedCell(
+        null,
       )
 
 
       setSuccess(
-        'Минимум оценок сохранён.',
+        `${studentName}: ${getAttendanceLabel(
+          status,
+        )}.`,
       )
 
 
-      await loadJournal()
+      /*
+        Фоновая сверка с Supabase.
+      */
+      void loadAttendance(
+        lessons,
+        grades,
+      )
     } catch (
       saveError
     ) {
+      console.error(
+        'Attendance save:',
+        saveError,
+      )
+
       setError(
         saveError?.message ||
-          'Не удалось сохранить минимум.',
+          'Не удалось сохранить посещаемость.',
       )
+    } finally {
+      setSaving(false)
     }
   }
 
 
   /* =======================================================
-     QUARTER
+     GRADE SAVE
   ======================================================= */
 
-  async function handleConfirmQuarter(
+  async function setQuickGrade(
+    gradeValue,
+    workType,
+  ) {
+    if (
+      !selectedCell
+    ) {
+      return
+    }
+
+
+    const numericGrade =
+      Number(
+        gradeValue,
+      )
+
+
+    if (
+      !QUICK_GRADES.includes(
+        numericGrade,
+      )
+    ) {
+      setError(
+        'Можно поставить только 2, 3, 4 или 5.',
+      )
+
+      return
+    }
+
+
+    if (
+      !WORK_TYPES.some(
+        (
+          item,
+        ) =>
+          item.value ===
+          workType,
+      )
+    ) {
+      setError(
+        'Сначала выберите тип работы.',
+      )
+
+      return
+    }
+
+
+    const currentStatus =
+      selectedCell
+        .attendance
+        ?.status ||
+      null
+
+
+    const attendanceConflict =
+      [
+        'absent',
+        'excused',
+        'sick',
+      ].includes(
+        currentStatus,
+      )
+
+
+    if (
+      attendanceConflict
+    ) {
+      const confirmed =
+        window.confirm(
+          `${selectedCell.student.name} отмечен как «${getAttendanceLabel(
+            currentStatus,
+          )}».\n\nПоставить оценку ${numericGrade} и изменить посещаемость на «Присутствовал»?`,
+        )
+
+
+      if (
+        !confirmed
+      ) {
+        return
+      }
+    }
+
+
+    try {
+      setSaving(true)
+      setError('')
+
+
+      const lesson = {
+        id:
+          selectedCell
+            .column
+            .lessonId,
+
+        teacherId:
+          user.id,
+
+        className:
+          selectedClass,
+
+        subject:
+          selectedSubject,
+
+        quarter:
+          selectedQuarter,
+
+        date:
+          selectedCell
+            .column
+            .date,
+
+        topic:
+          selectedCell
+            .column
+            .topic ||
+          '',
+      }
+
+
+      await createSupabaseJournalLessonGrade({
+        teacher:
+          user,
+
+        student:
+          selectedCell.student,
+
+        lesson,
+
+        grade:
+          numericGrade,
+
+        workType,
+
+        comment:
+          '',
+      })
+
+
+      /*
+        Оценка означает присутствие.
+
+        late сохраняем как late.
+      */
+      if (
+        !currentStatus ||
+        attendanceConflict
+      ) {
+        const existing =
+          selectedCell.attendance
+
+
+        if (
+          existing?.id
+        ) {
+          await updateSupabaseAttendanceRecord(
+            existing.id,
+            {
+              subject:
+                selectedSubject,
+
+              status:
+                'present',
+
+              comment:
+                existing.comment ||
+                '',
+
+              date:
+                selectedCell
+                  .column
+                  .date,
+            },
+          )
+        } else {
+          await saveSupabaseAttendanceRecord(
+            user,
+            selectedCell.student,
+            {
+              subject:
+                selectedSubject,
+
+              status:
+                'present',
+
+              comment:
+                '',
+
+              date:
+                selectedCell
+                  .column
+                  .date,
+            },
+          )
+        }
+      }
+
+
+      const studentName =
+        selectedCell
+          .student
+          .name
+
+
+      setSelectedCell(
+        null,
+      )
+
+
+      setSuccess(
+        `${studentName}: оценка ${numericGrade}.`,
+      )
+
+
+      /*
+        Не блокируем интерфейс.
+        После записи получаем актуальные
+        оценки в фоне.
+      */
+      void loadJournal({
+        silent:
+          true,
+      })
+    } catch (
+      saveError
+    ) {
+      console.error(
+        'Grade save:',
+        saveError,
+      )
+
+      setError(
+        saveError?.message ||
+          'Не удалось поставить оценку.',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+
+  /* =======================================================
+     DELETE GRADE
+  ======================================================= */
+
+  async function handleDeleteGrade(
+    grade,
+  ) {
+    if (
+      !grade?.id
+    ) {
+      return
+    }
+
+
+    const confirmed =
+      window.confirm(
+        `Удалить оценку ${grade.value}?`,
+      )
+
+
+    if (
+      !confirmed
+    ) {
+      return
+    }
+
+
+    try {
+      setSaving(true)
+      setError('')
+
+
+      await deleteSupabaseGrade(
+        grade.id,
+      )
+
+
+      /*
+        Убираем оценку мгновенно.
+      */
+      setGrades(
+        (
+          current,
+        ) =>
+          current.filter(
+            (
+              item,
+            ) =>
+              String(
+                item.id,
+              ) !==
+              String(
+                grade.id,
+              ),
+          ),
+      )
+
+
+      setSelectedCell(
+        null,
+      )
+
+
+      setSuccess(
+        'Оценка удалена.',
+      )
+
+
+      void loadJournal({
+        silent:
+          true,
+      })
+    } catch (
+      deleteError
+    ) {
+      console.error(
+        'Delete grade:',
+        deleteError,
+      )
+
+      setError(
+        deleteError?.message ||
+          'Не удалось удалить оценку.',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+
+  /* =======================================================
+     QUARTER GRADE
+  ======================================================= */
+
+  async function confirmQuarter(
     row,
   ) {
     if (
@@ -783,9 +1858,22 @@ function TeacherJournalPage() {
     }
 
 
+    const confirmed =
+      window.confirm(
+        `Выставить ${row.student.name} четвертную оценку ${row.predicted}?`,
+      )
+
+
+    if (
+      !confirmed
+    ) {
+      return
+    }
+
+
     try {
+      setSaving(true)
       setError('')
-      setSuccess('')
 
 
       await confirmQuarterGrade({
@@ -807,167 +1895,26 @@ function TeacherJournalPage() {
 
 
       setSuccess(
-        `${row.student.name}: четвертная ${row.predicted} выставлена.`,
+        `${row.student.name}: четвертная ${row.predicted}.`,
       )
 
 
-      await loadJournal()
+      void loadQuarterGrades()
     } catch (
       saveError
     ) {
+      console.error(
+        'Quarter:',
+        saveError,
+      )
+
       setError(
         saveError?.message ||
-          'Не удалось выставить четвертную.',
+          'Не удалось выставить четвертную оценку.',
       )
+    } finally {
+      setSaving(false)
     }
-  }
-
-
-  /* =======================================================
-     OPEN GRADE
-  ======================================================= */
-
- function openGradeModal(
-  student,
-  date = '',
-) {
-  setSuccess('')
-
-
-  if (
-    lessons.length === 0
-  ) {
-    const message =
-      'Сначала добавьте урок в журнал.'
-
-    setError(
-      message,
-    )
-
-    window.alert(
-      message,
-    )
-
-    return
-  }
-
-
-  let journalLesson = null
-
-
-  if (date) {
-    journalLesson =
-      lessons.find(
-        (lesson) =>
-          lesson.date ===
-          date,
-      ) ||
-      null
-
-
-    if (
-      !journalLesson
-    ) {
-      const message =
-        'На эту дату нет созданного урока. Сначала нажмите «Добавить урок» и создайте урок на эту дату.'
-
-      setError(
-        message,
-      )
-
-      window.alert(
-        message,
-      )
-
-      return
-    }
-  } else {
-    journalLesson =
-      [...lessons]
-        .sort(
-          (
-            first,
-            second,
-          ) =>
-            String(
-              second.date ||
-                '',
-            ).localeCompare(
-              String(
-                first.date ||
-                  '',
-              ),
-            ),
-        )[0]
-  }
-
-
-  if (
-    !journalLesson?.id
-  ) {
-    const message =
-      'Не удалось определить урок для оценки.'
-
-    setError(
-      message,
-    )
-
-    window.alert(
-      message,
-    )
-
-    return
-  }
-
-
-  setError('')
-
-
-  setGradeModal({
-    student,
-
-    date:
-      journalLesson.date,
-
-    journalLessonId:
-      journalLesson.id,
-  })
-}
-
-
-  /* =======================================================
-     OPEN SCHOOL LESSON
-  ======================================================= */
-
-  function openSchoolLesson(
-    lessonId,
-  ) {
-    if (
-      !lessonId
-    ) {
-      return
-    }
-
-
-    navigate(
-      `/school-lessons/${lessonId}`,
-    )
-  }
-
-
-  /* =======================================================
-     TAB
-  ======================================================= */
-
-  function changeTab(
-    tab,
-  ) {
-    setActiveTab(
-      tab,
-    )
-
-    setError('')
-    setSuccess('')
   }
 
 
@@ -983,71 +1930,108 @@ function TeacherJournalPage() {
 
 
   if (
-    user.role !==
-    'Учитель'
+    !isTeacher
   ) {
     return (
       <div className="page-container">
-
         <section className="content-card">
-
           <h2>
             Доступ запрещён
           </h2>
 
           <p>
-            Электронный журнал
-            доступен только
-            учителям.
+            Журнал доступен только учителю.
           </p>
-
         </section>
-
       </div>
     )
   }
 
 
   /* =======================================================
-     PAGE
+     RENDER
   ======================================================= */
 
   return (
-    <div className="page-container">
+    <div
+      className="page-container"
+      style={
+        styles.page
+      }
+    >
+      <style>{`
+        @keyframes teacher-journal-spin {
+          from {
+            transform: rotate(0deg);
+          }
 
-      <header className="page-header">
+          to {
+            transform: rotate(360deg);
+          }
+        }
 
+        .teacher-journal-refreshing {
+          animation:
+            teacher-journal-spin
+            0.8s
+            linear
+            infinite;
+        }
+      `}</style>
+
+
+      <header
+        style={
+          styles.header
+        }
+      >
         <div>
+          <span
+            style={
+              styles.eyebrow
+            }
+          >
+            Журнал учителя
+          </span>
 
-          <h1>
+          <h1
+            style={
+              styles.title
+            }
+          >
             Электронный журнал
           </h1>
 
-          <p>
-            Оценки, уроки,
-            четвертные результаты
-            и посещаемость класса.
+          <p
+            style={
+              styles.subtitle
+            }
+          >
+            Уроки из расписания появляются автоматически.
           </p>
-
         </div>
 
+
+        <SyncBadge
+          status={
+            syncStatus
+          }
+        />
       </header>
 
 
-      {/* =================================================
-          FILTERS
-      ================================================= */}
-
-      <section className="content-card">
-
+      <section
+        className="content-card"
+        style={
+          styles.filterCard
+        }
+      >
         <div
           style={
-            filtersGridStyle
+            styles.filters
           }
         >
-
           <label className="form-group">
-
             <span>
               Класс
             </span>
@@ -1056,21 +2040,23 @@ function TeacherJournalPage() {
               value={
                 selectedClass
               }
-              onChange={
-                (event) =>
-                  setSelectedClass(
-                    event.target.value,
-                  )
+              disabled={
+                initialLoading
+              }
+              onChange={(
+                event,
+              ) =>
+                setSelectedClass(
+                  event.target.value,
+                )
               }
             >
-
               {classes.length ===
                 0 && (
                 <option value="">
                   Нет классов
                 </option>
               )}
-
 
               {classes.map(
                 (
@@ -1088,14 +2074,11 @@ function TeacherJournalPage() {
                   </option>
                 ),
               )}
-
             </select>
-
           </label>
 
 
           <label className="form-group">
-
             <span>
               Предмет
             </span>
@@ -1104,15 +2087,26 @@ function TeacherJournalPage() {
               value={
                 selectedSubject
               }
-              onChange={
-                (event) =>
-                  setSelectedSubject(
-                    event.target.value,
-                  )
+              disabled={
+                subjects.length ===
+                0
+              }
+              onChange={(
+                event,
+              ) =>
+                setSelectedSubject(
+                  event.target.value,
+                )
               }
             >
+              {subjects.length ===
+                0 && (
+                <option value="">
+                  Нет предметов
+                </option>
+              )}
 
-              {SUBJECTS.map(
+              {subjects.map(
                 (
                   subject,
                 ) => (
@@ -1128,422 +2122,309 @@ function TeacherJournalPage() {
                   </option>
                 ),
               )}
-
             </select>
-
           </label>
 
 
-          {activeTab ===
-            'grades' && (
-            <>
+          <label className="form-group">
+            <span>
+              Четверть
+            </span>
 
-              <label className="form-group">
+            <select
+              value={
+                selectedQuarter
+              }
+              onChange={(
+                event,
+              ) =>
+                setSelectedQuarter(
+                  Number(
+                    event.target.value,
+                  ),
+                )
+              }
+            >
+              <option value={1}>
+                1 четверть
+              </option>
 
-                <span>
-                  Четверть
-                </span>
+              <option value={2}>
+                2 четверть
+              </option>
 
-                <select
-                  value={
-                    selectedQuarter
-                  }
-                  onChange={
-                    (event) =>
-                      setSelectedQuarter(
-                        Number(
-                          event.target.value,
-                        ),
-                      )
-                  }
-                >
+              <option value={3}>
+                3 четверть
+              </option>
 
-                  <option value={1}>
-                    1 четверть
-                  </option>
-
-                  <option value={2}>
-                    2 четверть
-                  </option>
-
-                  <option value={3}>
-                    3 четверть
-                  </option>
-
-                  <option value={4}>
-                    4 четверть
-                  </option>
-
-                </select>
-
-              </label>
-
-
-              <label className="form-group">
-
-                <span>
-                  Минимум оценок
-                </span>
-
-                <div
-                  style={
-                    inlineInputStyle
-                  }
-                >
-
-                  <input
-                    type="number"
-                    min="1"
-                    max="30"
-                    value={
-                      minimumGrades
-                    }
-                    onChange={
-                      (event) =>
-                        setMinimumGrades(
-                          Number(
-                            event.target.value,
-                          ),
-                        )
-                    }
-                  />
-
-
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={
-                      handleSaveMinimum
-                    }
-                    title="Сохранить минимум"
-                  >
-                    <Check
-                      size={18}
-                    />
-                  </button>
-
-                </div>
-
-              </label>
-
-            </>
-          )}
-
+              <option value={4}>
+                4 четверть
+              </option>
+            </select>
+          </label>
         </div>
-
       </section>
 
 
-      {/* =================================================
-          TABS
-      ================================================= */}
-
-      <div
-        style={
-          tabsStyle
-        }
-      >
-
-        <button
-          type="button"
-          onClick={() =>
-            changeTab(
-              'grades',
-            )
-          }
-          style={
-            tabButtonStyle(
-              activeTab ===
-                'grades',
-            )
-          }
-        >
-          📘 Оценки
-        </button>
-
-
-        <button
-          type="button"
-          onClick={() =>
-            changeTab(
-              'attendance',
-            )
-          }
-          style={
-            tabButtonStyle(
-              activeTab ===
-                'attendance',
-            )
-          }
-        >
-          📅 Посещаемость
-        </button>
-
-      </div>
-
-
-      {/* =================================================
-          MESSAGES
-      ================================================= */}
-
       {error && (
-        <section className="content-card">
-
-          <div className="auth-error">
-            {error}
-          </div>
-
-        </section>
+        <div
+          style={
+            styles.error
+          }
+        >
+          {error}
+        </div>
       )}
 
 
       {success && (
-        <section className="content-card">
-
-          <p
-            style={{
-              margin:
-                0,
-            }}
-          >
-            ✅ {success}
-          </p>
-
-        </section>
-      )}
-
-
-      {/* =================================================
-          GRADES
-      ================================================= */}
-
-      {activeTab ===
-        'grades' && (
-        <section className="content-card">
-
-          <div
-            style={
-              journalHeaderStyle
-            }
-          >
-
-            <div>
-
-              <p
-                style={
-                  journalEyebrowStyle
-                }
-              >
-                {selectedClass ||
-                  'Класс'}
-                {' · '}
-                {selectedSubject}
-              </p>
-
-
-              <h2
-                style={{
-                  margin:
-                    '4px 0 0',
-                }}
-              >
-                {selectedQuarter}
-                {' четверть'}
-              </h2>
-
-            </div>
-
-
-            <div
-              style={
-                journalActionsStyle
-              }
-            >
-
-              <span
-                style={
-                  studentCountStyle
-                }
-              >
-                Учеников:{' '}
-                {students.length}
-              </span>
-
-
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() =>
-                  setLessonModalOpen(
-                    true,
-                  )
-                }
-                disabled={
-                  !selectedClass
-                }
-              >
-                <CalendarPlus
-                  size={18}
-                />
-
-                Добавить урок
-              </button>
-
-            </div>
-
-          </div>
-
-
-          <div
-            style={
-              hintStyle
-            }
-          >
-            {isMobile
-              ? '📱 Выберите дату урока и нажмите «Поставить» возле нужного ученика.'
-              : '💡 Нажмите на пустую клетку журнала, чтобы поставить оценку за выбранный урок.'}
-          </div>
-
-
-          {/* =============================================
-              REAL LESSONS
-          ============================================= */}
-
-          {!loading &&
-            lessons.length >
-              0 && (
-            <JournalLessonsPanel
-              lessons={
-                lessons
-              }
-              onOpen={
-                openSchoolLesson
-              }
-            />
-          )}
-
-
-          {/* =============================================
-              JOURNAL
-          ============================================= */}
-
-          {loading ? (
-            <p className="empty-text">
-              Загрузка журнала...
-            </p>
-          ) : students.length ===
-          0 ? (
-            <p className="empty-text">
-              В этом классе пока
-              нет учеников.
-            </p>
-          ) : isMobile ? (
-            <TeacherJournalMobile
-              rows={
-                rows
-              }
-              columns={
-                columns
-              }
-              selectedSubject={
-                selectedSubject
-              }
-              selectedQuarter={
-                selectedQuarter
-              }
-              onAddGrade={
-                openGradeModal
-              }
-              onEditGrade={
-                setSelectedGrade
-              }
-              onConfirmQuarter={
-                handleConfirmQuarter
-              }
-            />
-          ) : (
-            <JournalTable
-              rows={
-                rows
-              }
-              columns={
-                columns
-              }
-              selectedSubject={
-                selectedSubject
-              }
-              selectedQuarter={
-                selectedQuarter
-              }
-              onAddGrade={
-                openGradeModal
-              }
-              onEditGrade={
-                setSelectedGrade
-              }
-              onConfirmQuarter={
-                handleConfirmQuarter
-              }
-              onOpenLesson={
-                openSchoolLesson
-              }
-            />
-          )}
-
-        </section>
-      )}
-
-
-      {/* =================================================
-          ATTENDANCE
-      ================================================= */}
-
-      {activeTab ===
-        'attendance' && (
-        <section className="content-card">
-
-          <TeacherAttendancePanel
-            teacher={
-              user
-            }
-            students={
-              students
-            }
-            className={
-              selectedClass
-            }
-            subject={
-              selectedSubject
-            }
+        <div
+          style={
+            styles.success
+          }
+        >
+          <Check
+            size={16}
           />
 
-        </section>
+          {success}
+        </div>
       )}
 
 
-      {/* =================================================
-          CREATE LESSON MODAL
-      ================================================= */}
+      <section
+        className="content-card"
+        style={
+          styles.journalCard
+        }
+      >
+        <div
+          style={
+            styles.journalHeader
+          }
+        >
+          <div>
+            <span
+              style={
+                styles.eyebrow
+              }
+            >
+              {selectedClass ||
+                'Класс'}
+
+              {' · '}
+
+              {selectedSubject ||
+                'Предмет'}
+            </span>
+
+
+            <h2
+              style={
+                styles.quarterTitle
+              }
+            >
+              {selectedQuarter}
+              {' четверть'}
+            </h2>
+
+
+            <small
+              style={
+                styles.meta
+              }
+            >
+              Учеников: {students.length}
+              {' · '}
+              Уроков: {columns.length}
+            </small>
+          </div>
+
+
+          <div
+            style={
+              styles.actions
+            }
+          >
+            <button
+              type="button"
+              style={
+                styles.secondaryButton
+              }
+              disabled={
+                saving ||
+                journalRefreshing
+              }
+              onClick={
+                handleRefresh
+              }
+            >
+              <RefreshCcw
+                size={15}
+                className={
+                  journalRefreshing
+                    ? 'teacher-journal-refreshing'
+                    : ''
+                }
+              />
+
+              {journalRefreshing
+                ? 'Обновляем'
+                : 'Обновить'}
+            </button>
+
+
+            <button
+              type="button"
+              style={
+                styles.additionalButton
+              }
+              disabled={
+                !selectedClass ||
+                !selectedSubject
+              }
+              onClick={() =>
+                setLessonModalOpen(
+                  true,
+                )
+              }
+            >
+              <CalendarPlus
+                size={15}
+              />
+
+              Доп. урок
+            </button>
+          </div>
+        </div>
+
+
+        <div
+          style={
+            styles.legend
+          }
+        >
+          <span>
+            <b>+</b> был
+          </span>
+
+          <span>
+            <b>−</b> нет
+          </span>
+
+          <span>
+            <b>УВ</b> уваж.
+          </span>
+
+          <span>
+            <b>Б</b> болел
+          </span>
+
+          <span>
+            <b>Оп</b> опоздал
+          </span>
+        </div>
+
+
+        {journalLoading &&
+        students.length ===
+          0 &&
+        lessons.length ===
+          0 &&
+        grades.length ===
+          0 ? (
+          <JournalSkeleton />
+        ) : students.length ===
+          0 ? (
+          <EmptyState
+            text="В классе нет активированных учеников."
+          />
+        ) : columns.length ===
+          0 ? (
+          <EmptyState
+            text="В этой четверти пока нет уроков."
+          />
+        ) : (
+          <JournalTable
+            rows={
+              rows
+            }
+
+            columns={
+              columns
+            }
+
+            attendanceMap={
+              attendanceMap
+            }
+
+            onOpenCell={
+              openCell
+            }
+
+            onConfirmQuarter={
+              confirmQuarter
+            }
+          />
+        )}
+      </section>
+
+
+      {selectedCell && (
+        <CellModal
+          cell={
+            selectedCell
+          }
+
+          saving={
+            saving
+          }
+
+          onClose={() =>
+            setSelectedCell(
+              null,
+            )
+          }
+
+          onGrade={
+            setQuickGrade
+          }
+
+          onAttendance={
+            setAttendanceStatus
+          }
+
+          onDeleteGrade={
+            handleDeleteGrade
+          }
+        />
+      )}
+
 
       {lessonModalOpen && (
-        <CreateLessonModal
+        <AdditionalLessonModal
           teacher={
             user
           }
+
           className={
             selectedClass
           }
+
           subject={
             selectedSubject
           }
+
           quarter={
             selectedQuarter
           }
+
           onClose={() =>
             setLessonModalOpen(
               false,
             )
           }
+
           onSaved={
             async () => {
               setLessonModalOpen(
@@ -1551,331 +2432,58 @@ function TeacherJournalPage() {
               )
 
               setSuccess(
-                'Урок добавлен в журнал.',
+                'Дополнительный урок добавлен.',
               )
 
-              await loadJournal()
+              await loadJournal({
+                silent:
+                  true,
+              })
             }
           }
         />
       )}
-
-
-      {/* =================================================
-          CREATE GRADE MODAL
-      ================================================= */}
-
-      {gradeModal && (
-        <CreateGradeModal
-          teacher={
-            user
-          }
-          student={
-            gradeModal.student
-          }
-          subject={
-            selectedSubject
-          }
-          quarter={
-            selectedQuarter
-          }
-          defaultDate={
-            gradeModal.date
-          }
-          journalLessonId={
-            gradeModal
-              .journalLessonId
-          }
-          onClose={() =>
-            setGradeModal(
-              null,
-            )
-          }
-          onSaved={
-            async () => {
-              setGradeModal(
-                null,
-              )
-
-              setSuccess(
-                'Оценка сохранена.',
-              )
-
-              await loadJournal()
-            }
-          }
-        />
-      )}
-
-
-      {/* =================================================
-          EDIT GRADE MODAL
-      ================================================= */}
-
-      {selectedGrade && (
-        <EditGradeModal
-          grade={
-            selectedGrade
-          }
-          canDelete={
-            String(
-              selectedGrade
-                .teacherId,
-            ) ===
-            String(
-              user.id,
-            )
-          }
-          onClose={() =>
-            setSelectedGrade(
-              null,
-            )
-          }
-          onSaved={
-            async () => {
-              setSelectedGrade(
-                null,
-              )
-
-              setSuccess(
-                'Оценка изменена.',
-              )
-
-              await loadJournal()
-            }
-          }
-          onDeleted={
-            async () => {
-              setSelectedGrade(
-                null,
-              )
-
-              setSuccess(
-                'Оценка удалена.',
-              )
-
-              await loadJournal()
-            }
-          }
-        />
-      )}
-
     </div>
   )
 }
 
 
 /* =========================================================
-   JOURNAL LESSONS PANEL
-========================================================= */
-
-function JournalLessonsPanel({
-  lessons,
-  onOpen,
-}) {
-  const sortedLessons =
-    [...lessons].sort(
-      (
-        first,
-        second,
-      ) =>
-        String(
-          second.date ||
-            '',
-        ).localeCompare(
-          String(
-            first.date ||
-              '',
-          ),
-        ),
-    )
-
-
-  return (
-    <div
-      style={
-        lessonsPanelStyle
-      }
-    >
-
-      <div
-        style={
-          lessonsPanelHeaderStyle
-        }
-      >
-
-        <div>
-
-          <strong
-            style={
-              lessonsPanelTitleStyle
-            }
-          >
-            Уроки журнала
-          </strong>
-
-          <small
-            style={
-              lessonsPanelSubtitleStyle
-            }
-          >
-            Откройте конкретный
-            урок для темы,
-            посещаемости, оценок
-            и домашнего задания
-          </small>
-
-        </div>
-
-
-        <span
-          style={
-            lessonsCountStyle
-          }
-        >
-          {lessons.length}{' '}
-          {getLessonsWord(
-            lessons.length,
-          )}
-        </span>
-
-      </div>
-
-
-      <div
-        style={
-          lessonsGridStyle
-        }
-      >
-
-        {sortedLessons.map(
-          (lesson) => (
-            <button
-              key={
-                lesson.id
-              }
-              type="button"
-              onClick={() =>
-                onOpen(
-                  lesson.id,
-                )
-              }
-              style={
-                lessonOpenCardStyle
-              }
-            >
-
-              <div
-                style={
-                  lessonOpenMainStyle
-                }
-              >
-
-                <div
-                  style={
-                    lessonOpenIconStyle
-                  }
-                >
-                  <BookOpen
-                    size={18}
-                  />
-                </div>
-
-
-                <div
-                  style={{
-                    minWidth:
-                      0,
-                  }}
-                >
-
-                  <strong
-                    style={
-                      lessonOpenDateStyle
-                    }
-                  >
-                    {formatFullDate(
-                      lesson.date,
-                    )}
-                  </strong>
-
-
-                  <small
-                    style={
-                      lessonOpenTopicStyle
-                    }
-                  >
-                    {lesson.topic ||
-                      'Тема не заполнена'}
-                  </small>
-
-                </div>
-
-              </div>
-
-
-              <ChevronRight
-                size={18}
-                color="#2563eb"
-              />
-
-            </button>
-          ),
-        )}
-
-      </div>
-
-    </div>
-  )
-}
-
-
-/* =========================================================
-   DESKTOP JOURNAL TABLE
+   TABLE
 ========================================================= */
 
 function JournalTable({
   rows,
   columns,
-  selectedSubject,
-  selectedQuarter,
-  onAddGrade,
-  onEditGrade,
+  attendanceMap,
+  onOpenCell,
   onConfirmQuarter,
-  onOpenLesson,
 }) {
   return (
     <div
       style={
-        tableWrapperStyle
+        styles.tableScroll
       }
     >
-
       <table
         style={{
-          width:
-            '100%',
-
-          borderCollapse:
-            'collapse',
+          ...styles.table,
 
           minWidth:
             Math.max(
-              900,
-              440 +
+              620,
+              220 +
                 columns.length *
-                  100,
+                  60 +
+                120,
             ),
         }}
       >
-
         <thead>
-
           <tr>
-
             <th
               style={
-                stickyNameHeaderStyle
+                styles.studentHeader
               }
             >
               Ученик
@@ -1883,13 +2491,15 @@ function JournalTable({
 
 
             {columns.map(
-              (column) => (
+              (
+                column,
+              ) => (
                 <th
                   key={
-                    column.date
+                    column.key
                   }
                   style={
-                    dateHeaderStyle
+                    styles.dateHeader
                   }
                   title={
                     column.topic ||
@@ -1898,60 +2508,24 @@ function JournalTable({
                     )
                   }
                 >
+                  <div>
+                    {formatShortDate(
+                      column.date,
+                    )}
+                  </div>
 
-                  {column.lessonId ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenLesson(
-                          column.lessonId,
-                        )
-                      }
+                  {column.topic && (
+                    <small
                       style={
-                        dateLessonButtonStyle
+                        styles.topicHint
                       }
-                      title="Открыть карточку урока"
                     >
-
-                      <div>
-                        {formatShortDate(
-                          column.date,
-                        )}
-                      </div>
-
-                      <small
-                        style={
-                          dateTopicStyle
-                        }
-                      >
-                        {column.topic ||
-                          'Урок'}
-                      </small>
-
-                      <BookOpen
-                        size={13}
-                      />
-
-                    </button>
-                  ) : (
-                    <>
-                      <div>
-                        {formatShortDate(
-                          column.date,
-                        )}
-                      </div>
-
-                      <small
-                        style={
-                          dateTopicStyle
-                        }
-                      >
-                        {column.topic ||
-                          'Дата'}
-                      </small>
-                    </>
+                      {truncate(
+                        column.topic,
+                        10,
+                      )}
+                    </small>
                   )}
-
                 </th>
               ),
             )}
@@ -1959,230 +2533,137 @@ function JournalTable({
 
             <th
               style={
-                headerCellStyle
+                styles.resultHeader
               }
             >
               Ср.
             </th>
 
-
             <th
               style={
-                headerCellStyle
+                styles.resultHeader
               }
             >
-              Прогноз
+              Четв.
             </th>
-
-
-            <th
-              style={
-                headerCellStyle
-              }
-            >
-              Четверть
-            </th>
-
-
-            <th
-              style={
-                headerCellStyle
-              }
-            >
-              +
-            </th>
-
           </tr>
-
         </thead>
 
 
         <tbody>
-
           {rows.map(
-            (row) => (
+            (
+              row,
+              index,
+            ) => (
               <tr
                 key={
                   row.student.id
                 }
               >
-
                 <td
                   style={
-                    stickyNameCellStyle
+                    styles.studentCell
                   }
                 >
-
                   <div
                     style={
-                      studentCellStyle
+                      styles.studentIdentity
                     }
                   >
-
-                    <div
+                    <span
                       style={
-                        avatarStyle
+                        styles.number
                       }
                     >
-                      {String(
-                        row.student
-                          .name ||
-                          'У',
-                      )
-                        .charAt(
+                      {index + 1}
+                    </span>
+
+
+                    <div
+                      style={{
+                        minWidth:
                           0,
-                        )
-                        .toUpperCase()}
-                    </div>
-
-
-                    <div>
-
-                      <strong>
+                      }}
+                    >
+                      <strong
+                        style={
+                          styles.studentName
+                        }
+                      >
                         {row.student.name}
                       </strong>
 
-                      <div
-                        style={
-                          studentMetaStyle
-                        }
-                      >
-                        {selectedSubject}
-                        {' · '}
-                        {selectedQuarter}
-                        {' четв.'}
-                      </div>
 
+                      {row.student
+                        .studentLogin && (
+                        <small
+                          style={
+                            styles.studentLogin
+                          }
+                        >
+                          {
+                            row.student
+                              .studentLogin
+                          }
+                        </small>
+                      )}
                     </div>
-
                   </div>
-
                 </td>
 
 
                 {columns.map(
-                  (column) => {
+                  (
+                    column,
+                  ) => {
                     const cellGrades =
-                      row.grades.filter(
-                        (grade) => {
-                          if (
-                            grade
-                              .journalLessonId &&
-                            column
-                              .lessonId
-                          ) {
-                            return (
-                              String(
-                                grade
-                                  .journalLessonId,
-                              ) ===
-                              String(
-                                column
-                                  .lessonId,
-                              )
-                            )
-                          }
+                      getCellGrades(
+                        row.grades,
+                        column,
+                      )
 
 
-                          return (
-                            grade.date ===
-                            column.date
-                          )
-                        },
+                    const attendance =
+                      attendanceMap.get(
+                        createAttendanceKey(
+                          row.student.id,
+                          column.date,
+                        ),
                       )
 
 
                     return (
                       <td
                         key={
-                          column.date
+                          column.key
                         }
                         style={
-                          bodyCellStyle
+                          styles.cell
                         }
                       >
-
-                        {cellGrades.length ===
-                        0 ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onAddGrade(
-                                row.student,
-                                column.date,
-                              )
+                        <button
+                          type="button"
+                          style={
+                            styles.cellButton
+                          }
+                          onClick={() =>
+                            onOpenCell(
+                              row,
+                              column,
+                            )
+                          }
+                        >
+                          <CellValue
+                            grades={
+                              cellGrades
                             }
-                            style={
-                              emptyCellButtonStyle
+
+                            attendance={
+                              attendance
                             }
-                            title={`Поставить оценку за ${formatFullDate(
-                              column.date,
-                            )}`}
-                          >
-                            <Plus
-                              size={17}
-                            />
-                          </button>
-                        ) : (
-                          <div
-                            style={
-                              cellGradesStyle
-                            }
-                          >
-
-                            {cellGrades.map(
-                              (
-                                grade,
-                              ) => (
-                                <button
-                                  type="button"
-                                  key={
-                                    grade.id
-                                  }
-                                  onClick={() =>
-                                    onEditGrade(
-                                      grade,
-                                    )
-                                  }
-                                  title={
-                                    grade
-                                      .journalLessonId
-                                      ? 'Изменить оценку этого урока'
-                                      : 'Изменить оценку'
-                                  }
-                                  style={
-                                    gradeButtonStyle(
-                                      grade.value,
-                                    )
-                                  }
-                                >
-                                  {grade.value}
-                                </button>
-                              ),
-                            )}
-
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                onAddGrade(
-                                  row.student,
-                                  column.date,
-                                )
-                              }
-                              style={
-                                smallAddButtonStyle
-                              }
-                              title="Добавить ещё одну оценку"
-                            >
-                              <Plus
-                                size={13}
-                              />
-                            </button>
-
-                          </div>
-                        )}
-
+                          />
+                        </button>
                       </td>
                     )
                   },
@@ -2191,7 +2672,7 @@ function JournalTable({
 
                 <td
                   style={
-                    bodyCellStyle
+                    styles.resultCell
                   }
                 >
                   <strong>
@@ -2203,153 +2684,482 @@ function JournalTable({
 
                 <td
                   style={
-                    bodyCellStyle
+                    styles.resultCell
                   }
                 >
-
-                  {row.isAttested ? (
-                    <span
+                  {row.finalGrade !==
+                  null ? (
+                    <GradeBadge
+                      value={
+                        row.finalGrade
+                      }
+                    />
+                  ) : row.isAttested ? (
+                    <button
+                      type="button"
                       style={
-                        resultBadgeStyle(
-                          row.predicted,
+                        styles.quarterButton
+                      }
+                      title="Подтвердить четвертную"
+                      onClick={() =>
+                        onConfirmQuarter(
+                          row,
                         )
                       }
                     >
-                      {row.predicted}
-                    </span>
+                      {
+                        row.predicted
+                      }
+                    </button>
                   ) : (
                     <span
                       style={
-                        naBadgeStyle
+                        styles.notAttested
                       }
                       title={`Не хватает оценок: ${row.missing}`}
                     >
                       Н/А
                     </span>
                   )}
-
                 </td>
-
-
-                <td
-                  style={
-                    bodyCellStyle
-                  }
-                >
-
-                  {row.finalGrade !==
-                  null ? (
-                    <span
-                      style={
-                        resultBadgeStyle(
-                          row.finalGrade,
-                        )
-                      }
-                    >
-                      {row.finalGrade}
-                    </span>
-                  ) : row.isAttested ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onConfirmQuarter(
-                          row,
-                        )
-                      }
-                      style={
-                        confirmButtonStyle
-                      }
-                      title="Подтвердить четвертную"
-                    >
-                      {row.predicted}
-
-                      <ChevronRight
-                        size={15}
-                      />
-                    </button>
-                  ) : (
-                    <span
-                      style={{
-                        opacity:
-                          0.35,
-                      }}
-                    >
-                      —
-                    </span>
-                  )}
-
-                </td>
-
-
-                <td
-                  style={
-                    bodyCellStyle
-                  }
-                >
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onAddGrade(
-                        row.student,
-                      )
-                    }
-                    style={
-                      addButtonStyle
-                    }
-                    title="Добавить оценку"
-                  >
-                    <Plus
-                      size={18}
-                    />
-                  </button>
-
-                </td>
-
               </tr>
             ),
           )}
-
         </tbody>
-
       </table>
-
-
-      {columns.length ===
-        0 && (
-        <div
-          style={
-            noDatesStyle
-          }
-        >
-
-          <CalendarPlus
-            size={30}
-          />
-
-          <strong>
-            Пока нет уроков
-          </strong>
-
-          <p>
-            Нажмите «Добавить
-            урок», чтобы создать
-            первую колонку журнала.
-          </p>
-
-        </div>
-      )}
-
     </div>
   )
 }
 
 
 /* =========================================================
-   CREATE LESSON
+   CELL
 ========================================================= */
 
-function CreateLessonModal({
+function CellValue({
+  grades,
+  attendance,
+}) {
+  if (
+    grades.length >
+    0
+  ) {
+    return (
+      <div
+        style={
+          styles.cellValue
+        }
+      >
+        {grades
+          .slice(
+            0,
+            2,
+          )
+          .map(
+            (
+              grade,
+            ) => (
+              <GradeBadge
+                key={
+                  grade.id
+                }
+                value={
+                  grade.value
+                }
+              />
+            ),
+          )}
+
+
+        {grades.length >
+          2 && (
+          <small
+            style={
+              styles.moreGrades
+            }
+          >
+            +{grades.length - 2}
+          </small>
+        )}
+
+
+        {attendance?.status ===
+          'late' && (
+          <small
+            style={
+              styles.late
+            }
+          >
+            Оп
+          </small>
+        )}
+      </div>
+    )
+  }
+
+
+  if (
+    attendance?.status
+  ) {
+    return (
+      <AttendanceBadge
+        status={
+          attendance.status
+        }
+      />
+    )
+  }
+
+
+  return (
+    <span
+      style={
+        styles.emptyCell
+      }
+    >
+      ·
+    </span>
+  )
+}
+
+
+/* =========================================================
+   CELL MODAL
+========================================================= */
+
+function CellModal({
+  cell,
+  saving,
+  onClose,
+  onGrade,
+  onAttendance,
+  onDeleteGrade,
+}) {
+  const [
+    workType,
+    setWorkType,
+  ] = useState('')
+
+
+  return (
+    <ModalShell
+      onClose={
+        onClose
+      }
+    >
+      <div
+        style={
+          styles.modalHeader
+        }
+      >
+        <div>
+          <span
+            style={
+              styles.eyebrow
+            }
+          >
+            {formatFullDate(
+              cell.column.date,
+            )}
+          </span>
+
+          <h2
+            style={
+              styles.modalTitle
+            }
+          >
+            {cell.student.name}
+          </h2>
+
+          {cell.column.topic && (
+            <p
+              style={
+                styles.muted
+              }
+            >
+              {cell.column.topic}
+            </p>
+          )}
+        </div>
+
+
+        <button
+          type="button"
+          style={
+            styles.closeButton
+          }
+          onClick={
+            onClose
+          }
+        >
+          <X
+            size={20}
+          />
+        </button>
+      </div>
+
+
+      <section
+        style={
+          styles.modalSection
+        }
+      >
+        <strong>
+          Тип работы
+        </strong>
+
+
+        <select
+          value={
+            workType
+          }
+          onChange={(
+            event,
+          ) =>
+            setWorkType(
+              event.target.value,
+            )
+          }
+        >
+          <option value="">
+            Выберите тип работы
+          </option>
+
+          {WORK_TYPES.map(
+            (
+              item,
+            ) => (
+              <option
+                key={
+                  item.value
+                }
+                value={
+                  item.value
+                }
+              >
+                {item.label}
+              </option>
+            ),
+          )}
+        </select>
+
+
+        {!workType && (
+          <small
+            style={
+              styles.warning
+            }
+          >
+            Перед оценкой выберите тип работы.
+          </small>
+        )}
+      </section>
+
+
+      <section
+        style={
+          styles.modalSection
+        }
+      >
+        <strong>
+          Оценка
+        </strong>
+
+
+        <div
+          style={
+            styles.optionRow
+          }
+        >
+          {QUICK_GRADES.map(
+            (
+              grade,
+            ) => (
+              <button
+                key={
+                  grade
+                }
+                type="button"
+                disabled={
+                  saving ||
+                  !workType
+                }
+                style={{
+                  ...quickGradeStyle(
+                    grade,
+                  ),
+
+                  opacity:
+                    saving ||
+                    !workType
+                      ? 0.45
+                      : 1,
+                }}
+                onClick={() =>
+                  onGrade(
+                    grade,
+                    workType,
+                  )
+                }
+              >
+                {grade}
+              </button>
+            ),
+          )}
+        </div>
+      </section>
+
+
+      <section
+        style={
+          styles.modalSection
+        }
+      >
+        <strong>
+          Посещаемость
+        </strong>
+
+
+        <div
+          style={
+            styles.optionRow
+          }
+        >
+          {ATTENDANCE_OPTIONS.map(
+            (
+              option,
+            ) => (
+              <button
+                key={
+                  option.value
+                }
+                type="button"
+                disabled={
+                  saving
+                }
+                title={
+                  option.label
+                }
+                style={
+                  attendanceButtonStyle(
+                    option.value,
+                    cell.attendance
+                      ?.status ===
+                      option.value,
+                  )
+                }
+                onClick={() =>
+                  onAttendance(
+                    option.value,
+                  )
+                }
+              >
+                {option.short}
+              </button>
+            ),
+          )}
+        </div>
+      </section>
+
+
+      {cell.grades.length >
+        0 && (
+        <section
+          style={
+            styles.modalSection
+          }
+        >
+          <strong>
+            Выставленные оценки
+          </strong>
+
+
+          <div
+            style={
+              styles.gradeList
+            }
+          >
+            {cell.grades.map(
+              (
+                grade,
+              ) => (
+                <div
+                  key={
+                    grade.id
+                  }
+                  style={
+                    styles.gradeRow
+                  }
+                >
+                  <GradeBadge
+                    value={
+                      grade.value
+                    }
+                  />
+
+
+                  <div
+                    style={{
+                      flex:
+                        1,
+                    }}
+                  >
+                    <strong
+                      style={
+                        styles.gradeType
+                      }
+                    >
+                      {getWorkTypeName(
+                        grade.workType,
+                      )}
+                    </strong>
+
+                    {grade.comment && (
+                      <small
+                        style={
+                          styles.muted
+                        }
+                      >
+                        {grade.comment}
+                      </small>
+                    )}
+                  </div>
+
+
+                  <button
+                    type="button"
+                    disabled={
+                      saving
+                    }
+                    style={
+                      styles.deleteButton
+                    }
+                    onClick={() =>
+                      onDeleteGrade(
+                        grade,
+                      )
+                    }
+                  >
+                    <Trash2
+                      size={15}
+                    />
+                  </button>
+                </div>
+              ),
+            )}
+          </div>
+        </section>
+      )}
+    </ModalShell>
+  )
+}
+
+
+/* =========================================================
+   ADDITIONAL LESSON
+========================================================= */
+
+function AdditionalLessonModal({
   teacher,
   className,
   subject,
@@ -2358,21 +3168,24 @@ function CreateLessonModal({
   onSaved,
 }) {
   const [
-    form,
-    setForm,
-  ] = useState({
-    date:
-      getToday(),
+    date,
+    setDate,
+  ] = useState(
+    getToday(),
+  )
 
-    topic:
-      '',
-  })
+
+  const [
+    topic,
+    setTopic,
+  ] = useState('')
 
 
   const [
     saving,
     setSaving,
   ] = useState(false)
+
 
   const [
     error,
@@ -2384,6 +3197,17 @@ function CreateLessonModal({
     event,
   ) {
     event.preventDefault()
+
+
+    if (
+      !date
+    ) {
+      setError(
+        'Выберите дату.',
+      )
+
+      return
+    }
 
 
     try {
@@ -2400,11 +3224,10 @@ function CreateLessonModal({
 
         quarter,
 
-        date:
-          form.date,
+        date,
 
         topic:
-          form.topic,
+          topic.trim(),
       })
 
 
@@ -2414,7 +3237,7 @@ function CreateLessonModal({
     ) {
       setError(
         saveError?.message ||
-          'Не удалось добавить урок.',
+          'Не удалось создать дополнительный урок.',
       )
     } finally {
       setSaving(false)
@@ -2428,655 +3251,73 @@ function CreateLessonModal({
         onClose
       }
     >
-
       <form
         onSubmit={
           handleSubmit
         }
       >
-
-        <ModalHeader
-          subtitle={`${className} · ${subject}`}
-          title="Добавить урок"
-          onClose={
-            onClose
-          }
-        />
-
-
         <div
           style={
-            lessonInfoStyle
+            styles.modalHeader
           }
         >
-          📅 После сохранения
-          урок появится в журнале
-          и получит собственную
-          карточку.
-        </div>
-
-
-        {error && (
-          <div className="auth-error">
-            {error}
-          </div>
-        )}
-
-
-        <label className="form-group">
-
-          <span>
-            Дата урока
-          </span>
-
-          <input
-            type="date"
-            required
-            value={
-              form.date
-            }
-            onChange={
-              (event) =>
-                setForm(
-                  (
-                    currentForm,
-                  ) => ({
-                    ...currentForm,
-
-                    date:
-                      event.target.value,
-                  }),
-                )
-            }
-          />
-
-        </label>
-
-
-        <label className="form-group">
-
-          <span>
-            Тема урока
-          </span>
-
-          <input
-            value={
-              form.topic
-            }
-            onChange={
-              (event) =>
-                setForm(
-                  (
-                    currentForm,
-                  ) => ({
-                    ...currentForm,
-
-                    topic:
-                      event.target.value,
-                  }),
-                )
-            }
-            placeholder="Например: Квадратные уравнения"
-          />
-
-        </label>
-
-
-        <button
-          type="submit"
-          className="primary-button"
-          disabled={
-            saving
-          }
-          style={{
-            width:
-              '100%',
-          }}
-        >
-
-          <CalendarPlus
-            size={18}
-          />
-
-          {saving
-            ? 'Добавляем...'
-            : 'Добавить урок'}
-
-        </button>
-
-      </form>
-
-    </ModalShell>
-  )
-}
-
-
-/* =========================================================
-   CREATE GRADE
-========================================================= */
-
-function CreateGradeModal({
-  teacher,
-  student,
-  subject,
-  quarter,
-  defaultDate,
-  journalLessonId,
-  onClose,
-  onSaved,
-}) {
-  const [
-    form,
-    setForm,
-  ] = useState({
-    value:
-      '5',
-
-    workType:
-      'homework',
-
-    topic:
-      '',
-
-    comment:
-      '',
-
-    date:
-      defaultDate ||
-      getToday(),
-  })
-
-
-  const [
-    saving,
-    setSaving,
-  ] = useState(false)
-
-  const [
-    error,
-    setError,
-  ] = useState('')
-
-
-  async function handleSubmit(
-    event,
-  ) {
-    event.preventDefault()
-
-
-    try {
-      setSaving(true)
-      setError('')
-
-
-      if (
-        !journalLessonId
-      ) {
-        throw new Error(
-          'Оценка должна быть привязана к уроку.',
-        )
-      }
-
-
-      await createSupabaseGrade(
-        teacher,
-        student,
-        {
-          ...form,
-
-          subject,
-
-          quarter,
-
-          journalLessonId,
-        },
-      )
-
-
-      await onSaved()
-    } catch (
-      saveError
-    ) {
-      setError(
-        saveError?.message ||
-          'Не удалось сохранить оценку.',
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
-
-
-  return (
-    <ModalShell
-      onClose={
-        onClose
-      }
-    >
-
-      <form
-        onSubmit={
-          handleSubmit
-        }
-      >
-
-        <ModalHeader
-          subtitle={
-            student.name
-          }
-          title="Новая оценка"
-          onClose={
-            onClose
-          }
-        />
-
-
-        <p
-          style={
-            modalSubtitleStyle
-          }
-        >
-          {subject}
-          {' · '}
-          {quarter}
-          {' четверть · '}
-          {formatFullDate(
-            form.date,
-          )}
-        </p>
-
-
-        <div
-          style={
-            lessonInfoStyle
-          }
-        >
-          📘 Оценка будет
-          привязана к конкретному
-          уроку.
-        </div>
-
-
-        {error && (
-          <div className="auth-error">
-            {error}
-          </div>
-        )}
-
-
-        <GradeFormFields
-          form={
-            form
-          }
-          setForm={
-            setForm
-          }
-          disableDate
-        />
-
-
-        <button
-          type="submit"
-          className="primary-button"
-          disabled={
-            saving
-          }
-          style={{
-            width:
-              '100%',
-          }}
-        >
-          {saving
-            ? 'Сохраняем...'
-            : 'Сохранить оценку'}
-        </button>
-
-      </form>
-
-    </ModalShell>
-  )
-}
-
-
-/* =========================================================
-   EDIT GRADE
-========================================================= */
-
-function EditGradeModal({
-  grade,
-  canDelete,
-  onClose,
-  onSaved,
-  onDeleted,
-}) {
-  const [
-    form,
-    setForm,
-  ] = useState({
-    value:
-      String(
-        grade.value,
-      ),
-
-    workType:
-      grade.workType ||
-      'homework',
-
-    topic:
-      grade.topic ||
-      '',
-
-    comment:
-      grade.comment ||
-      '',
-
-    date:
-      grade.date ||
-      getToday(),
-  })
-
-
-  const [
-    saving,
-    setSaving,
-  ] = useState(false)
-
-  const [
-    deleting,
-    setDeleting,
-  ] = useState(false)
-
-  const [
-    error,
-    setError,
-  ] = useState('')
-
-
-  const linkedToLesson =
-    Boolean(
-      grade
-        .journalLessonId,
-    )
-
-
-  async function handleSubmit(
-    event,
-  ) {
-    event.preventDefault()
-
-
-    try {
-      setSaving(true)
-      setError('')
-
-
-      await updateSupabaseGrade(
-        grade.id,
-        form,
-      )
-
-
-      await onSaved()
-    } catch (
-      saveError
-    ) {
-      setError(
-        saveError?.message ||
-          'Не удалось изменить оценку.',
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
-
-
-  async function handleDelete() {
-    const confirmed =
-      window.confirm(
-        'Удалить эту оценку?',
-      )
-
-
-    if (
-      !confirmed
-    ) {
-      return
-    }
-
-
-    try {
-      setDeleting(true)
-      setError('')
-
-
-      await deleteSupabaseGrade(
-        grade.id,
-      )
-
-
-      await onDeleted()
-    } catch (
-      deleteError
-    ) {
-      setError(
-        deleteError?.message ||
-          'Не удалось удалить оценку.',
-      )
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-
-  return (
-    <ModalShell
-      onClose={
-        onClose
-      }
-    >
-
-      <form
-        onSubmit={
-          handleSubmit
-        }
-      >
-
-        <ModalHeader
-          subtitle={
-            grade.subject
-          }
-          title={`Редактировать оценку ${grade.value}`}
-          onClose={
-            onClose
-          }
-        />
-
-
-        <div
-          style={
-            editInfoStyle
-          }
-        >
-
-          <Pencil
-            size={17}
-          />
-
-          <span>
-            Изменения сразу
-            увидит ученик.
-          </span>
-
-        </div>
-
-
-        {linkedToLesson && (
-          <div
-            style={
-              lessonInfoStyle
-            }
-          >
-            📘 Эта оценка привязана
-            к конкретному уроку.
-            Дата фиксирована.
-          </div>
-        )}
-
-
-        {error && (
-          <div className="auth-error">
-            {error}
-          </div>
-        )}
-
-
-        <GradeFormFields
-          form={
-            form
-          }
-          setForm={
-            setForm
-          }
-          disableDate={
-            linkedToLesson
-          }
-        />
-
-
-        <div
-          style={{
-            display:
-              'grid',
-
-            gridTemplateColumns:
-              canDelete
-                ? '1fr 1fr'
-                : '1fr',
-
-            gap:
-              10,
-          }}
-        >
-
-          <button
-            type="submit"
-            className="primary-button"
-            disabled={
-              saving ||
-              deleting
-            }
-          >
-            {saving
-              ? 'Сохраняем...'
-              : 'Сохранить изменения'}
-          </button>
-
-
-          {canDelete && (
-            <button
-              type="button"
-              onClick={
-                handleDelete
-              }
-              disabled={
-                saving ||
-                deleting
-              }
+          <div>
+            <span
               style={
-                deleteButtonStyle
+                styles.eyebrow
               }
             >
+              Вне расписания
+            </span>
 
-              <Trash2
-                size={18}
-              />
-
-              {deleting
-                ? 'Удаляем...'
-                : 'Удалить'}
-
-            </button>
-          )}
-
-        </div>
-
-      </form>
-
-    </ModalShell>
-  )
-}
+            <h2
+              style={
+                styles.modalTitle
+              }
+            >
+              Дополнительный урок
+            </h2>
+          </div>
 
 
-/* =========================================================
-   GRADE FIELDS
-========================================================= */
-
-function GradeFormFields({
-  form,
-  setForm,
-  disableDate = false,
-}) {
-  return (
-    <>
-
-      <div
-        style={
-          twoColumnStyle
-        }
-      >
-
-        <label className="form-group">
-
-          <span>
-            Оценка
-          </span>
-
-          <select
-            value={
-              form.value
+          <button
+            type="button"
+            style={
+              styles.closeButton
             }
-            onChange={
-              (event) =>
-                setForm(
-                  (
-                    currentForm,
-                  ) => ({
-                    ...currentForm,
-
-                    value:
-                      event.target.value,
-                  }),
-                )
+            onClick={
+              onClose
             }
           >
+            <X
+              size={20}
+            />
+          </button>
+        </div>
 
-            <option value="5">
-              5
-            </option>
 
-            <option value="4">
-              4
-            </option>
+        <div
+          style={
+            styles.infoBox
+          }
+        >
+          Используйте только для урока,
+          которого нет в основном расписании.
+        </div>
 
-            <option value="3">
-              3
-            </option>
 
-            <option value="2">
-              2
-            </option>
-
-            <option value="1">
-              1
-            </option>
-
-          </select>
-
-        </label>
+        {error && (
+          <div
+            style={
+              styles.error
+            }
+          >
+            {error}
+          </div>
+        )}
 
 
         <label className="form-group">
-
           <span>
             Дата
           </span>
@@ -3084,198 +3325,167 @@ function GradeFormFields({
           <input
             type="date"
             required
-            disabled={
-              disableDate
-            }
             value={
-              form.date
+              date
             }
-            onChange={
-              (event) =>
-                setForm(
-                  (
-                    currentForm,
-                  ) => ({
-                    ...currentForm,
-
-                    date:
-                      event.target.value,
-                  }),
-                )
+            onChange={(
+              event,
+            ) =>
+              setDate(
+                event.target.value,
+              )
             }
           />
-
         </label>
 
-      </div>
 
+        <label className="form-group">
+          <span>
+            Тема
+          </span>
 
-      <label className="form-group">
-
-        <span>
-          Тип работы
-        </span>
-
-        <select
-          value={
-            form.workType
-          }
-          onChange={
-            (event) =>
-              setForm(
-                (
-                  currentForm,
-                ) => ({
-                  ...currentForm,
-
-                  workType:
-                    event.target.value,
-                }),
+          <input
+            value={
+              topic
+            }
+            onChange={(
+              event,
+            ) =>
+              setTopic(
+                event.target.value,
               )
+            }
+            placeholder="Например: консультация"
+          />
+        </label>
+
+
+        <button
+          type="submit"
+          className="primary-button"
+          disabled={
+            saving
+          }
+          style={
+            styles.fullButton
           }
         >
-
-          {GRADE_TYPES.map(
-            (
-              type,
-            ) => (
-              <option
-                key={
-                  type.value
-                }
-                value={
-                  type.value
-                }
-              >
-                {type.label}
-              </option>
-            ),
-          )}
-
-        </select>
-
-      </label>
-
-
-      <label className="form-group">
-
-        <span>
-          Тема
-        </span>
-
-        <input
-          value={
-            form.topic
-          }
-          onChange={
-            (event) =>
-              setForm(
-                (
-                  currentForm,
-                ) => ({
-                  ...currentForm,
-
-                  topic:
-                    event.target.value,
-                }),
-              )
-          }
-          placeholder="Например: Квадратные уравнения"
-        />
-
-      </label>
-
-
-      <label className="form-group">
-
-        <span>
-          Комментарий
-        </span>
-
-        <textarea
-          value={
-            form.comment
-          }
-          onChange={
-            (event) =>
-              setForm(
-                (
-                  currentForm,
-                ) => ({
-                  ...currentForm,
-
-                  comment:
-                    event.target.value,
-                }),
-              )
-          }
-          placeholder="Комментарий для ученика"
-        />
-
-      </label>
-
-    </>
+          {saving
+            ? 'Создаём...'
+            : 'Создать дополнительный урок'}
+        </button>
+      </form>
+    </ModalShell>
   )
 }
 
 
 /* =========================================================
-   MODAL
+   SMALL COMPONENTS
 ========================================================= */
 
-function ModalHeader({
-  subtitle,
-  title,
-  onClose,
+function SyncBadge({
+  status,
+}) {
+  if (
+    status ===
+    'loading'
+  ) {
+    return (
+      <div
+        style={
+          styles.syncLoading
+        }
+      >
+        Синхронизация...
+      </div>
+    )
+  }
+
+
+  if (
+    status ===
+    'error'
+  ) {
+    return (
+      <div
+        style={
+          styles.syncError
+        }
+      >
+        Ошибка синхронизации
+      </div>
+    )
+  }
+
+
+  if (
+    status ===
+    'success'
+  ) {
+    return (
+      <div
+        style={
+          styles.syncSuccess
+        }
+      >
+        <Check
+          size={14}
+        />
+
+        Связан с расписанием
+      </div>
+    )
+  }
+
+
+  return null
+}
+
+
+function JournalSkeleton() {
+  return (
+    <div
+      style={
+        styles.skeleton
+      }
+    >
+      <div
+        style={
+          styles.skeletonLine
+        }
+      />
+
+      <div
+        style={{
+          ...styles.skeletonLine,
+          width:
+            '72%',
+        }}
+      />
+
+      <div
+        style={{
+          ...styles.skeletonLine,
+          width:
+            '84%',
+        }}
+      />
+    </div>
+  )
+}
+
+
+function EmptyState({
+  text,
 }) {
   return (
     <div
       style={
-        modalHeaderStyle
+        styles.empty
       }
     >
-
-      <div>
-
-        <p
-          style={{
-            margin:
-              0,
-
-            opacity:
-              0.6,
-          }}
-        >
-          {subtitle}
-        </p>
-
-
-        <h2
-          style={{
-            margin:
-              '4px 0 0',
-          }}
-        >
-          {title}
-        </h2>
-
-      </div>
-
-
-      <button
-        type="button"
-        onClick={
-          onClose
-        }
-        style={
-          iconButtonStyle
-        }
-      >
-        <X
-          size={20}
-        />
-      </button>
-
+      {text}
     </div>
   )
 }
@@ -3287,37 +3497,239 @@ function ModalShell({
 }) {
   return (
     <div
-      onMouseDown={
-        (event) => {
-          if (
-            event.target ===
-            event.currentTarget
-          ) {
-            onClose()
-          }
-        }
-      }
       style={
-        modalBackdropStyle
+        styles.backdrop
       }
+      onMouseDown={(
+        event,
+      ) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          onClose()
+        }
+      }}
     >
-
       <div
         style={
-          modalCardStyle
+          styles.modal
         }
       >
         {children}
       </div>
-
     </div>
   )
 }
 
 
+function GradeBadge({
+  value,
+}) {
+  return (
+    <span
+      style={
+        gradeBadgeStyle(
+          value,
+        )
+      }
+    >
+      {value}
+    </span>
+  )
+}
+
+
+function AttendanceBadge({
+  status,
+}) {
+  return (
+    <span
+      style={
+        attendanceBadgeStyle(
+          status,
+        )
+      }
+    >
+      {getAttendanceShort(
+        status,
+      )}
+    </span>
+  )
+}
+
+
 /* =========================================================
-   DATE
+   HELPERS
 ========================================================= */
+
+function filterTeacherRows(
+  rows,
+  teacherId,
+) {
+  return (
+    Array.isArray(rows)
+      ? rows
+      : []
+  ).filter(
+    (
+      row,
+    ) =>
+      !row?.teacherId ||
+      String(
+        row.teacherId,
+      ) ===
+        String(
+          teacherId,
+        ),
+  )
+}
+
+
+function createAttendanceKey(
+  studentId,
+  date,
+) {
+  return `${String(
+    studentId ||
+      '',
+  )}|${String(
+    date ||
+      '',
+  )}`
+}
+
+
+function getCellGrades(
+  grades,
+  column,
+) {
+  return (
+    grades ||
+    []
+  ).filter(
+    (
+      grade,
+    ) => {
+      /*
+        Новая запись:
+        строго по journalLessonId.
+      */
+      if (
+        grade.journalLessonId
+      ) {
+        return (
+          String(
+            grade.journalLessonId,
+          ) ===
+          String(
+            column.lessonId,
+          )
+        )
+      }
+
+
+      /*
+        Старые оценки без lesson id
+        показываем внутри реального
+        урока той же даты.
+      */
+      return (
+        String(
+          grade.date,
+        ) ===
+        String(
+          column.date,
+        )
+      )
+    },
+  )
+}
+
+
+function getAttendanceShort(
+  status,
+) {
+  return (
+    ATTENDANCE_OPTIONS.find(
+      (
+        item,
+      ) =>
+        item.value ===
+        status,
+    )?.short ||
+    '·'
+  )
+}
+
+
+function getAttendanceLabel(
+  status,
+) {
+  return (
+    ATTENDANCE_OPTIONS.find(
+      (
+        item,
+      ) =>
+        item.value ===
+        status,
+    )?.label ||
+    'Не отмечен'
+  )
+}
+
+
+function getWorkTypeName(
+  value,
+) {
+  return (
+    WORK_TYPES.find(
+      (
+        item,
+      ) =>
+        item.value ===
+        value,
+    )?.label ||
+    'Тип работы'
+  )
+}
+
+
+function getCurrentAcademicYear() {
+  const now =
+    new Date()
+
+  const year =
+    now.getFullYear()
+
+  const month =
+    now.getMonth()
+
+
+  return month >= 6
+    ? `${year}/${year + 1}`
+    : `${year - 1}/${year}`
+}
+
+
+function compareClasses(
+  first,
+  second,
+) {
+  return String(
+    first,
+  ).localeCompare(
+    String(
+      second,
+    ),
+    'ru',
+    {
+      numeric:
+        true,
+    },
+  )
+}
+
 
 function getToday() {
   const now =
@@ -3344,38 +3756,23 @@ function getToday() {
 function formatShortDate(
   value,
 ) {
-  if (
-    !value
-  ) {
-    return '—'
-  }
-
-
-  const date =
-    new Date(
-      `${value}T12:00:00`,
-    )
+  const parts =
+    String(
+      value ||
+        '',
+    ).split('-')
 
 
   if (
-    Number.isNaN(
-      date.getTime(),
-    )
+    parts.length !==
+    3
   ) {
-    return '—'
+    return value ||
+      '—'
   }
 
 
-  return date.toLocaleDateString(
-    'ru-RU',
-    {
-      day:
-        '2-digit',
-
-      month:
-        '2-digit',
-    },
-  )
+  return `${parts[2]}.${parts[1]}`
 }
 
 
@@ -3385,26 +3782,13 @@ function formatFullDate(
   if (
     !value
   ) {
-    return 'Дата не указана'
+    return '—'
   }
 
 
-  const date =
-    new Date(
-      `${value}T12:00:00`,
-    )
-
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return 'Дата не указана'
-  }
-
-
-  return date.toLocaleDateString(
+  return new Date(
+    `${value}T12:00:00`,
+  ).toLocaleDateString(
     'ru-RU',
     {
       day:
@@ -3420,50 +3804,286 @@ function formatFullDate(
 }
 
 
-function getLessonsWord(
-  count,
+function truncate(
+  value,
+  maxLength,
 ) {
-  const value =
-    Math.abs(
-      Number(
-        count,
-      ),
+  const safe =
+    String(
+      value ||
+        '',
+    ).trim()
+
+
+  if (
+    safe.length <=
+    maxLength
+  ) {
+    return safe
+  }
+
+
+  return `${safe.slice(
+    0,
+    maxLength,
+  )}…`
+}
+
+
+/* =========================================================
+   COLOR HELPERS
+========================================================= */
+
+function gradeColors(
+  value,
+) {
+  const grade =
+    Number(
+      value,
     )
 
 
-  const mod100 =
-    value %
-    100
-
-  const mod10 =
-    value %
-    10
-
-
   if (
-    mod100 >= 11 &&
-    mod100 <= 14
+    grade === 5
   ) {
-    return 'уроков'
+    return {
+      background:
+        '#dcfce7',
+
+      color:
+        '#15803d',
+    }
   }
 
 
   if (
-    mod10 === 1
+    grade === 4
   ) {
-    return 'урок'
+    return {
+      background:
+        '#dbeafe',
+
+      color:
+        '#1d4ed8',
+    }
   }
 
 
   if (
-    mod10 >= 2 &&
-    mod10 <= 4
+    grade === 3
   ) {
-    return 'урока'
+    return {
+      background:
+        '#fef3c7',
+
+      color:
+        '#b45309',
+    }
   }
 
 
-  return 'уроков'
+  return {
+    background:
+      '#fee2e2',
+
+    color:
+      '#b91c1c',
+  }
+}
+
+
+function attendanceColors(
+  status,
+) {
+  const colors = {
+    present: {
+      background:
+        '#dcfce7',
+
+      color:
+        '#15803d',
+    },
+
+    absent: {
+      background:
+        '#fee2e2',
+
+      color:
+        '#b91c1c',
+    },
+
+    excused: {
+      background:
+        '#dbeafe',
+
+      color:
+        '#1d4ed8',
+    },
+
+    sick: {
+      background:
+        '#ede9fe',
+
+      color:
+        '#6d28d9',
+    },
+
+    late: {
+      background:
+        '#fef3c7',
+
+      color:
+        '#b45309',
+    },
+  }
+
+
+  return (
+    colors[status] || {
+      background:
+        '#f1f5f9',
+
+      color:
+        '#64748b',
+    }
+  )
+}
+
+
+function gradeBadgeStyle(
+  value,
+) {
+  return {
+    width:
+      28,
+
+    height:
+      28,
+
+    display:
+      'inline-grid',
+
+    placeItems:
+      'center',
+
+    borderRadius:
+      8,
+
+    fontSize:
+      13,
+
+    fontWeight:
+      900,
+
+    ...gradeColors(
+      value,
+    ),
+  }
+}
+
+
+function attendanceBadgeStyle(
+  status,
+) {
+  return {
+    minWidth:
+      30,
+
+    height:
+      28,
+
+    padding:
+      '0 5px',
+
+    display:
+      'inline-grid',
+
+    placeItems:
+      'center',
+
+    borderRadius:
+      8,
+
+    fontSize:
+      11,
+
+    fontWeight:
+      900,
+
+    ...attendanceColors(
+      status,
+    ),
+  }
+}
+
+
+function quickGradeStyle(
+  grade,
+) {
+  return {
+    width:
+      46,
+
+    height:
+      42,
+
+    border:
+      'none',
+
+    borderRadius:
+      11,
+
+    cursor:
+      'pointer',
+
+    fontSize:
+      16,
+
+    fontWeight:
+      900,
+
+    ...gradeColors(
+      grade,
+    ),
+  }
+}
+
+
+function attendanceButtonStyle(
+  status,
+  active,
+) {
+  return {
+    minWidth:
+      48,
+
+    height:
+      40,
+
+    padding:
+      '0 10px',
+
+    border:
+      active
+        ? '2px solid currentColor'
+        : '1px solid transparent',
+
+    borderRadius:
+      11,
+
+    cursor:
+      'pointer',
+
+    fontSize:
+      12,
+
+    fontWeight:
+      900,
+
+    ...attendanceColors(
+      status,
+    ),
+  }
 }
 
 
@@ -3471,1098 +4091,1121 @@ function getLessonsWord(
    STYLES
 ========================================================= */
 
-function tabButtonStyle(
-  active,
-) {
-  return {
-    border:
+const styles = {
+  page: {
+    width:
+      '100%',
+
+    maxWidth:
       'none',
+  },
+
+
+  header: {
+    display:
+      'flex',
+
+    alignItems:
+      'flex-start',
+
+    justifyContent:
+      'space-between',
+
+    gap:
+      14,
+
+    flexWrap:
+      'wrap',
+
+    marginBottom:
+      16,
+  },
+
+
+  eyebrow: {
+    color:
+      '#2563eb',
+
+    fontSize:
+      10,
+
+    fontWeight:
+      900,
+
+    textTransform:
+      'uppercase',
+
+    letterSpacing:
+      '.05em',
+  },
+
+
+  title: {
+    margin:
+      '5px 0 0',
+
+    color:
+      '#102343',
+
+    fontSize:
+      'clamp(25px, 5vw, 35px)',
+
+    lineHeight:
+      1.1,
+  },
+
+
+  subtitle: {
+    margin:
+      '7px 0 0',
+
+    color:
+      '#64748b',
+
+    fontSize:
+      12,
+  },
+
+
+  filterCard: {
+    marginBottom:
+      14,
+  },
+
+
+  filters: {
+    display:
+      'grid',
+
+    gridTemplateColumns:
+      'repeat(auto-fit, minmax(150px, 1fr))',
+
+    gap:
+      12,
+  },
+
+
+  error: {
+    marginBottom:
+      12,
+
+    padding:
+      11,
+
+    color:
+      '#b91c1c',
+
+    background:
+      '#fef2f2',
+
+    border:
+      '1px solid #fecaca',
 
     borderRadius:
       12,
 
+    fontSize:
+      11,
+
+    fontWeight:
+      700,
+  },
+
+
+  success: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      7,
+
+    marginBottom:
+      12,
+
     padding:
-      '11px 18px',
+      11,
+
+    color:
+      '#15803d',
+
+    background:
+      '#ecfdf5',
+
+    border:
+      '1px solid #bbf7d0',
+
+    borderRadius:
+      12,
+
+    fontSize:
+      11,
+
+    fontWeight:
+      800,
+  },
+
+
+  journalCard: {
+    overflow:
+      'hidden',
+  },
+
+
+  journalHeader: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    justifyContent:
+      'space-between',
+
+    flexWrap:
+      'wrap',
+
+    gap:
+      12,
+
+    marginBottom:
+      12,
+  },
+
+
+  quarterTitle: {
+    margin:
+      '4px 0 0',
+
+    color:
+      '#102343',
+  },
+
+
+  meta: {
+    display:
+      'block',
+
+    marginTop:
+      5,
+
+    color:
+      '#94a3b8',
+
+    fontSize:
+      9,
+  },
+
+
+  actions: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      7,
+
+    flexWrap:
+      'wrap',
+  },
+
+
+  secondaryButton: {
+    minHeight:
+      36,
+
+    display:
+      'inline-flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      6,
+
+    padding:
+      '0 11px',
+
+    border:
+      '1px solid #e2e8f0',
+
+    borderRadius:
+      10,
+
+    background:
+      '#f8fafc',
+
+    color:
+      '#334155',
+
+    cursor:
+      'pointer',
+
+    fontSize:
+      10,
+
+    fontWeight:
+      800,
+  },
+
+
+  additionalButton: {
+    minHeight:
+      36,
+
+    display:
+      'inline-flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      6,
+
+    padding:
+      '0 11px',
+
+    border:
+      '1px solid #bfdbfe',
+
+    borderRadius:
+      10,
+
+    background:
+      '#eff6ff',
+
+    color:
+      '#2563eb',
+
+    cursor:
+      'pointer',
+
+    fontSize:
+      10,
+
+    fontWeight:
+      800,
+  },
+
+
+  legend: {
+    display:
+      'flex',
+
+    flexWrap:
+      'wrap',
+
+    gap:
+      9,
+
+    marginBottom:
+      12,
+
+    color:
+      '#64748b',
+
+    fontSize:
+      9,
+  },
+
+
+  tableScroll: {
+    width:
+      '100%',
+
+    overflowX:
+      'auto',
+
+    border:
+      '1px solid #e8eef6',
+
+    borderRadius:
+      14,
+  },
+
+
+  table: {
+    width:
+      '100%',
+
+    borderCollapse:
+      'separate',
+
+    borderSpacing:
+      0,
+
+    background:
+      '#fff',
+  },
+
+
+  studentHeader: {
+    position:
+      'sticky',
+
+    left:
+      0,
+
+    zIndex:
+      6,
+
+    minWidth:
+      210,
+
+    padding:
+      11,
+
+    textAlign:
+      'left',
+
+    background:
+      '#f8fafc',
+
+    borderBottom:
+      '1px solid #e8eef6',
+
+    color:
+      '#475569',
+
+    fontSize:
+      10,
+
+    fontWeight:
+      900,
+  },
+
+
+  dateHeader: {
+    minWidth:
+      60,
+
+    padding:
+      9,
+
+    textAlign:
+      'center',
+
+    background:
+      '#f8fafc',
+
+    borderBottom:
+      '1px solid #e8eef6',
+
+    color:
+      '#475569',
+
+    fontSize:
+      10,
+
+    fontWeight:
+      900,
+  },
+
+
+  topicHint: {
+    display:
+      'block',
+
+    marginTop:
+      3,
+
+    color:
+      '#94a3b8',
+
+    fontSize:
+      7,
+  },
+
+
+  resultHeader: {
+    minWidth:
+      55,
+
+    padding:
+      9,
+
+    background:
+      '#f8fafc',
+
+    borderBottom:
+      '1px solid #e8eef6',
+
+    textAlign:
+      'center',
+
+    fontSize:
+      10,
+  },
+
+
+  studentCell: {
+    position:
+      'sticky',
+
+    left:
+      0,
+
+    zIndex:
+      4,
+
+    minWidth:
+      210,
+
+    padding:
+      '9px 10px',
+
+    background:
+      '#fff',
+
+    borderBottom:
+      '1px solid #edf2f7',
+  },
+
+
+  studentIdentity: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      9,
+  },
+
+
+  number: {
+    width:
+      22,
+
+    height:
+      22,
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    flexShrink:
+      0,
+
+    borderRadius:
+      7,
+
+    background:
+      '#f1f5f9',
+
+    color:
+      '#64748b',
+
+    fontSize:
+      9,
+
+    fontWeight:
+      800,
+  },
+
+
+  studentName: {
+    display:
+      'block',
+
+    overflow:
+      'hidden',
+
+    color:
+      '#102343',
+
+    fontSize:
+      11,
+
+    textOverflow:
+      'ellipsis',
+
+    whiteSpace:
+      'nowrap',
+  },
+
+
+  studentLogin: {
+    display:
+      'block',
+
+    marginTop:
+      2,
+
+    color:
+      '#94a3b8',
+
+    fontSize:
+      8,
+  },
+
+
+  cell: {
+    height:
+      48,
+
+    padding:
+      3,
+
+    textAlign:
+      'center',
+
+    borderBottom:
+      '1px solid #edf2f7',
+
+    borderLeft:
+      '1px solid #f1f5f9',
+  },
+
+
+  cellButton: {
+    width:
+      '100%',
+
+    minWidth:
+      48,
+
+    minHeight:
+      40,
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    border:
+      'none',
+
+    borderRadius:
+      9,
+
+    background:
+      'transparent',
+
+    cursor:
+      'pointer',
+  },
+
+
+  cellValue: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    justifyContent:
+      'center',
+
+    gap:
+      2,
+  },
+
+
+  moreGrades: {
+    color:
+      '#64748b',
+
+    fontSize:
+      8,
+
+    fontWeight:
+      800,
+  },
+
+
+  late: {
+    color:
+      '#b45309',
+
+    fontSize:
+      8,
+
+    fontWeight:
+      900,
+  },
+
+
+  emptyCell: {
+    color:
+      '#cbd5e1',
+
+    fontSize:
+      18,
+  },
+
+
+  resultCell: {
+    minWidth:
+      55,
+
+    padding:
+      5,
+
+    textAlign:
+      'center',
+
+    borderBottom:
+      '1px solid #edf2f7',
+
+    borderLeft:
+      '1px solid #f1f5f9',
+
+    color:
+      '#334155',
+
+    fontSize:
+      11,
+  },
+
+
+  quarterButton: {
+    width:
+      30,
+
+    height:
+      30,
+
+    border:
+      '1px solid #bfdbfe',
+
+    borderRadius:
+      8,
+
+    background:
+      '#dbeafe',
+
+    color:
+      '#1d4ed8',
 
     cursor:
       'pointer',
 
     fontWeight:
-      800,
+      900,
+  },
+
+
+  notAttested: {
+    color:
+      '#94a3b8',
 
     fontSize:
-      14,
+      9,
 
-    background:
-      active
-        ? '#2563eb'
-        : '#f1f5f9',
+    fontWeight:
+      800,
+  },
+
+
+  empty: {
+    minHeight:
+      130,
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    padding:
+      20,
 
     color:
-      active
-        ? '#ffffff'
-        : '#334155',
+      '#94a3b8',
+
+    textAlign:
+      'center',
+
+    fontSize:
+      11,
+  },
+
+
+  skeleton: {
+    display:
+      'grid',
+
+    gap:
+      10,
+
+    padding:
+      '30px 18px',
+  },
+
+
+  skeletonLine: {
+    width:
+      '100%',
+
+    height:
+      18,
+
+    borderRadius:
+      8,
+
+    background:
+      '#eef2f7',
+  },
+
+
+  backdrop: {
+    position:
+      'fixed',
+
+    inset:
+      0,
+
+    zIndex:
+      1000,
+
+    display:
+      'grid',
+
+    placeItems:
+      'center',
+
+    padding:
+      16,
+
+    background:
+      'rgba(15,23,42,.45)',
+  },
+
+
+  modal: {
+    width:
+      'min(100%, 470px)',
+
+    maxHeight:
+      '88vh',
+
+    overflowY:
+      'auto',
+
+    padding:
+      18,
+
+    border:
+      '1px solid #e2e8f0',
+
+    borderRadius:
+      18,
+
+    background:
+      '#fff',
 
     boxShadow:
-      active
-        ? '0 6px 18px rgba(37, 99, 235, 0.18)'
-        : 'none',
-  }
-}
+      '0 24px 70px rgba(15,23,42,.18)',
+  },
 
 
-function gradeButtonStyle(
-  value,
-) {
-  const backgrounds = {
-    5:
-      '#dcfce7',
+  modalHeader: {
+    display:
+      'flex',
 
-    4:
-      '#dbeafe',
+    justifyContent:
+      'space-between',
 
-    3:
-      '#fef3c7',
+    alignItems:
+      'flex-start',
 
-    2:
-      '#fee2e2',
+    gap:
+      12,
 
-    1:
-      '#fecaca',
-  }
+    marginBottom:
+      13,
+  },
 
 
-  return {
-    border:
-      'none',
+  modalTitle: {
+    margin:
+      '5px 0 0',
 
+    color:
+      '#102343',
+
+    fontSize:
+      20,
+  },
+
+
+  modalSection: {
+    display:
+      'grid',
+
+    gap:
+      8,
+
+    padding:
+      '13px 0',
+
+    borderTop:
+      '1px solid #edf2f7',
+  },
+
+
+  optionRow: {
+    display:
+      'flex',
+
+    flexWrap:
+      'wrap',
+
+    gap:
+      7,
+  },
+
+
+  muted: {
+    display:
+      'block',
+
+    margin:
+      '5px 0 0',
+
+    color:
+      '#94a3b8',
+
+    fontSize:
+      9,
+  },
+
+
+  warning: {
+    color:
+      '#b45309',
+
+    fontSize:
+      9,
+  },
+
+
+  closeButton: {
     width:
       34,
 
     height:
       34,
 
-    borderRadius:
-      10,
-
-    cursor:
-      'pointer',
-
-    fontWeight:
-      800,
-
-    fontSize:
-      15,
-
-    background:
-      backgrounds[
-        value
-      ] ||
-      '#f1f5f9',
-
-    color:
-      '#0f172a',
-  }
-}
-
-
-function resultBadgeStyle(
-  value,
-) {
-  return {
     display:
-      'inline-grid',
+      'grid',
 
     placeItems:
       'center',
 
-    minWidth:
-      36,
-
-    height:
-      36,
-
-    padding:
-      '0 10px',
+    border:
+      '1px solid #e2e8f0',
 
     borderRadius:
       10,
 
-    fontWeight:
-      800,
+    background:
+      '#f8fafc',
+
+    color:
+      '#64748b',
+
+    cursor:
+      'pointer',
+  },
+
+
+  gradeList: {
+    display:
+      'grid',
+
+    gap:
+      7,
+  },
+
+
+  gradeRow: {
+    display:
+      'flex',
+
+    alignItems:
+      'center',
+
+    gap:
+      9,
+
+    padding:
+      9,
+
+    border:
+      '1px solid #edf2f7',
+
+    borderRadius:
+      11,
 
     background:
-      Number(
-        value,
-      ) >= 5
-        ? '#dcfce7'
-        : Number(
-              value,
-            ) >= 4
-          ? '#dbeafe'
-          : Number(
-                value,
-              ) >= 3
-            ? '#fef3c7'
-            : '#fee2e2',
-  }
-}
+      '#f8fafc',
+  },
 
 
-const filtersGridStyle = {
-  display:
-    'grid',
+  gradeType: {
+    display:
+      'block',
 
-  gridTemplateColumns:
-    'repeat(auto-fit, minmax(190px, 1fr))',
+    fontSize:
+      10,
+  },
 
-  gap:
-    16,
-}
 
+  deleteButton: {
+    width:
+      31,
 
-const inlineInputStyle = {
-  display:
-    'flex',
+    height:
+      31,
 
-  gap:
-    8,
-}
+    display:
+      'grid',
 
+    placeItems:
+      'center',
 
-const tabsStyle = {
-  display:
-    'flex',
+    border:
+      '1px solid #fecaca',
 
-  gap:
-    10,
+    borderRadius:
+      9,
 
-  marginBottom:
-    18,
+    background:
+      '#fef2f2',
 
-  flexWrap:
-    'wrap',
-}
+    color:
+      '#dc2626',
 
+    cursor:
+      'pointer',
+  },
 
-const journalHeaderStyle = {
-  display:
-    'flex',
 
-  alignItems:
-    'center',
+  infoBox: {
+    marginBottom:
+      14,
 
-  justifyContent:
-    'space-between',
+    padding:
+      11,
 
-  gap:
-    16,
+    border:
+      '1px solid #e2e8f0',
 
-  flexWrap:
-    'wrap',
+    borderRadius:
+      11,
 
-  marginBottom:
-    16,
-}
+    background:
+      '#f8fafc',
 
+    color:
+      '#64748b',
 
-const journalEyebrowStyle = {
-  margin:
-    0,
+    fontSize:
+      10,
 
-  opacity:
-    0.65,
-}
+    lineHeight:
+      1.5,
+  },
 
 
-const journalActionsStyle = {
-  display:
-    'flex',
+  fullButton: {
+    width:
+      '100%',
 
-  alignItems:
-    'center',
+    marginTop:
+      12,
+  },
 
-  gap:
-    10,
 
-  flexWrap:
-    'wrap',
-}
+  syncSuccess: {
+    display:
+      'inline-flex',
 
+    alignItems:
+      'center',
 
-const studentCountStyle = {
-  padding:
-    '8px 11px',
+    gap:
+      6,
 
-  borderRadius:
-    10,
+    padding:
+      '9px 11px',
 
-  background:
-    '#f8fafc',
+    border:
+      '1px solid #bbf7d0',
 
-  fontSize:
-    13,
+    borderRadius:
+      999,
 
-  fontWeight:
-    700,
-}
+    background:
+      '#ecfdf5',
 
+    color:
+      '#15803d',
 
-const hintStyle = {
-  padding:
-    '11px 13px',
+    fontSize:
+      10,
 
-  marginBottom:
-    16,
+    fontWeight:
+      800,
+  },
 
-  borderRadius:
-    12,
 
-  background:
-    '#eff6ff',
+  syncLoading: {
+    padding:
+      '9px 11px',
 
-  color:
-    '#1e40af',
+    border:
+      '1px solid #bfdbfe',
 
-  fontSize:
-    13,
-}
+    borderRadius:
+      999,
 
+    background:
+      '#eff6ff',
 
-/* LESSONS */
+    color:
+      '#2563eb',
 
-const lessonsPanelStyle = {
-  padding:
-    14,
+    fontSize:
+      10,
 
-  marginBottom:
-    18,
+    fontWeight:
+      800,
+  },
 
-  border:
-    '1px solid #dbeafe',
 
-  borderRadius:
-    16,
+  syncError: {
+    padding:
+      '9px 11px',
 
-  background:
-    '#f8fbff',
-}
+    border:
+      '1px solid #fecaca',
 
+    borderRadius:
+      999,
 
-const lessonsPanelHeaderStyle = {
-  display:
-    'flex',
+    background:
+      '#fef2f2',
 
-  alignItems:
-    'center',
+    color:
+      '#b91c1c',
 
-  justifyContent:
-    'space-between',
+    fontSize:
+      10,
 
-  gap:
-    12,
-
-  flexWrap:
-    'wrap',
-
-  marginBottom:
-    12,
-}
-
-
-const lessonsPanelTitleStyle = {
-  display:
-    'block',
-
-  color:
-    '#0f274d',
-
-  fontSize:
-    16,
-}
-
-
-const lessonsPanelSubtitleStyle = {
-  display:
-    'block',
-
-  marginTop:
-    3,
-
-  color:
-    '#64748b',
-
-  lineHeight:
-    1.4,
-}
-
-
-const lessonsCountStyle = {
-  padding:
-    '7px 10px',
-
-  borderRadius:
-    9,
-
-  background:
-    '#e2e8f0',
-
-  color:
-    '#475569',
-
-  fontSize:
-    12,
-
-  fontWeight:
-    700,
-}
-
-
-const lessonsGridStyle = {
-  display:
-    'grid',
-
-  gridTemplateColumns:
-    'repeat(auto-fit, minmax(220px, 1fr))',
-
-  gap:
-    10,
-}
-
-
-const lessonOpenCardStyle = {
-  width:
-    '100%',
-
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  justifyContent:
-    'space-between',
-
-  gap:
-    12,
-
-  padding:
-    13,
-
-  border:
-    '1px solid #dbeafe',
-
-  borderRadius:
-    13,
-
-  background:
-    '#ffffff',
-
-  cursor:
-    'pointer',
-
-  textAlign:
-    'left',
-}
-
-
-const lessonOpenMainStyle = {
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  gap:
-    10,
-
-  minWidth:
-    0,
-}
-
-
-const lessonOpenIconStyle = {
-  width:
-    38,
-
-  height:
-    38,
-
-  flexShrink:
-    0,
-
-  display:
-    'grid',
-
-  placeItems:
-    'center',
-
-  borderRadius:
-    10,
-
-  background:
-    '#dbeafe',
-
-  color:
-    '#2563eb',
-}
-
-
-const lessonOpenDateStyle = {
-  display:
-    'block',
-
-  color:
-    '#0f274d',
-
-  whiteSpace:
-    'nowrap',
-
-  overflow:
-    'hidden',
-
-  textOverflow:
-    'ellipsis',
-}
-
-
-const lessonOpenTopicStyle = {
-  display:
-    'block',
-
-  marginTop:
-    3,
-
-  color:
-    '#64748b',
-
-  whiteSpace:
-    'nowrap',
-
-  overflow:
-    'hidden',
-
-  textOverflow:
-    'ellipsis',
-}
-
-
-/* TABLE */
-
-const tableWrapperStyle = {
-  position:
-    'relative',
-
-  overflowX:
-    'auto',
-
-  border:
-    '1px solid #e5e7eb',
-
-  borderRadius:
-    16,
-}
-
-
-const headerCellStyle = {
-  padding:
-    12,
-
-  textAlign:
-    'center',
-
-  borderBottom:
-    '1px solid #e5e7eb',
-
-  background:
-    '#f8fafc',
-
-  whiteSpace:
-    'nowrap',
-
-  fontSize:
-    13,
-}
-
-
-const dateHeaderStyle = {
-  ...headerCellStyle,
-
-  minWidth:
-    95,
-
-  maxWidth:
-    110,
-}
-
-
-const dateLessonButtonStyle = {
-  width:
-    '100%',
-
-  display:
-    'grid',
-
-  justifyItems:
-    'center',
-
-  gap:
-    3,
-
-  padding:
-    0,
-
-  border:
-    'none',
-
-  background:
-    'transparent',
-
-  color:
-    '#0f274d',
-
-  cursor:
-    'pointer',
-
-  fontWeight:
-    700,
-}
-
-
-const dateTopicStyle = {
-  display:
-    'block',
-
-  marginTop:
-    4,
-
-  maxWidth:
-    90,
-
-  overflow:
-    'hidden',
-
-  textOverflow:
-    'ellipsis',
-
-  whiteSpace:
-    'nowrap',
-
-  opacity:
-    0.55,
-
-  fontWeight:
-    500,
-}
-
-
-const bodyCellStyle = {
-  padding:
-    8,
-
-  textAlign:
-    'center',
-
-  borderBottom:
-    '1px solid #eef2f7',
-
-  minWidth:
-    68,
-}
-
-
-const stickyNameHeaderStyle = {
-  ...headerCellStyle,
-
-  position:
-    'sticky',
-
-  left:
-    0,
-
-  zIndex:
-    3,
-
-  textAlign:
-    'left',
-
-  minWidth:
-    230,
-}
-
-
-const stickyNameCellStyle = {
-  ...bodyCellStyle,
-
-  position:
-    'sticky',
-
-  left:
-    0,
-
-  zIndex:
-    2,
-
-  textAlign:
-    'left',
-
-  minWidth:
-    230,
-
-  background:
-    '#ffffff',
-}
-
-
-const studentCellStyle = {
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  gap:
-    10,
-}
-
-
-const avatarStyle = {
-  width:
-    34,
-
-  height:
-    34,
-
-  flexShrink:
-    0,
-
-  borderRadius:
-    '50%',
-
-  display:
-    'grid',
-
-  placeItems:
-    'center',
-
-  background:
-    '#eef5ff',
-
-  fontWeight:
-    800,
-}
-
-
-const studentMetaStyle = {
-  fontSize:
-    12,
-
-  opacity:
-    0.6,
-
-  marginTop:
-    2,
-}
-
-
-const emptyCellButtonStyle = {
-  width:
-    42,
-
-  height:
-    38,
-
-  borderRadius:
-    10,
-
-  border:
-    '1px dashed #cbd5e1',
-
-  background:
-    '#ffffff',
-
-  color:
-    '#94a3b8',
-
-  cursor:
-    'pointer',
-
-  display:
-    'inline-grid',
-
-  placeItems:
-    'center',
-}
-
-
-const cellGradesStyle = {
-  display:
-    'flex',
-
-  justifyContent:
-    'center',
-
-  alignItems:
-    'center',
-
-  gap:
-    4,
-
-  flexWrap:
-    'wrap',
-}
-
-
-const smallAddButtonStyle = {
-  width:
-    25,
-
-  height:
-    25,
-
-  borderRadius:
-    8,
-
-  border:
-    '1px dashed #cbd5e1',
-
-  background:
-    '#ffffff',
-
-  color:
-    '#64748b',
-
-  cursor:
-    'pointer',
-
-  display:
-    'grid',
-
-  placeItems:
-    'center',
-}
-
-
-const addButtonStyle = {
-  width:
-    36,
-
-  height:
-    36,
-
-  borderRadius:
-    10,
-
-  border:
-    '1px solid #dbeafe',
-
-  background:
-    '#eff6ff',
-
-  color:
-    '#2563eb',
-
-  display:
-    'inline-grid',
-
-  placeItems:
-    'center',
-
-  cursor:
-    'pointer',
-}
-
-
-const confirmButtonStyle = {
-  border:
-    'none',
-
-  borderRadius:
-    10,
-
-  minHeight:
-    36,
-
-  padding:
-    '0 10px',
-
-  cursor:
-    'pointer',
-
-  background:
-    '#eff6ff',
-
-  color:
-    '#1d4ed8',
-
-  fontWeight:
-    800,
-
-  display:
-    'inline-flex',
-
-  alignItems:
-    'center',
-
-  gap:
-    4,
-}
-
-
-const naBadgeStyle = {
-  display:
-    'inline-grid',
-
-  placeItems:
-    'center',
-
-  height:
-    36,
-
-  padding:
-    '0 10px',
-
-  borderRadius:
-    10,
-
-  fontWeight:
-    800,
-
-  background:
-    '#fee2e2',
-
-  color:
-    '#991b1b',
-}
-
-
-const noDatesStyle = {
-  minHeight:
-    180,
-
-  display:
-    'flex',
-
-  flexDirection:
-    'column',
-
-  alignItems:
-    'center',
-
-  justifyContent:
-    'center',
-
-  gap:
-    8,
-
-  color:
-    '#64748b',
-
-  padding:
-    30,
-}
-
-
-/* MODAL */
-
-const twoColumnStyle = {
-  display:
-    'grid',
-
-  gridTemplateColumns:
-    'repeat(2, minmax(0, 1fr))',
-
-  gap:
-    12,
-}
-
-
-const modalBackdropStyle = {
-  position:
-    'fixed',
-
-  inset:
-    0,
-
-  zIndex:
-    1000,
-
-  background:
-    'rgba(15, 23, 42, 0.45)',
-
-  display:
-    'grid',
-
-  placeItems:
-    'center',
-
-  padding:
-    20,
-}
-
-
-const modalCardStyle = {
-  width:
-    'min(520px, 100%)',
-
-  maxHeight:
-    '90vh',
-
-  overflowY:
-    'auto',
-
-  background:
-    '#ffffff',
-
-  borderRadius:
-    20,
-
-  padding:
-    22,
-
-  boxShadow:
-    '0 24px 80px rgba(15, 23, 42, 0.22)',
-}
-
-
-const modalHeaderStyle = {
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  justifyContent:
-    'space-between',
-
-  gap:
-    16,
-
-  marginBottom:
-    18,
-}
-
-
-const modalSubtitleStyle = {
-  marginTop:
-    0,
-
-  opacity:
-    0.7,
-}
-
-
-const iconButtonStyle = {
-  width:
-    38,
-
-  height:
-    38,
-
-  borderRadius:
-    10,
-
-  border:
-    '1px solid #e2e8f0',
-
-  background:
-    '#ffffff',
-
-  cursor:
-    'pointer',
-
-  display:
-    'grid',
-
-  placeItems:
-    'center',
-}
-
-
-const lessonInfoStyle = {
-  padding:
-    '10px 12px',
-
-  marginBottom:
-    16,
-
-  borderRadius:
-    12,
-
-  background:
-    '#eff6ff',
-
-  color:
-    '#1d4ed8',
-
-  fontSize:
-    13,
-
-  lineHeight:
-    1.5,
-}
-
-
-const editInfoStyle = {
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  gap:
-    8,
-
-  marginBottom:
-    16,
-
-  padding:
-    '10px 12px',
-
-  borderRadius:
-    12,
-
-  background:
-    '#eff6ff',
-
-  color:
-    '#1d4ed8',
-}
-
-
-const deleteButtonStyle = {
-  border:
-    '1px solid #fecaca',
-
-  borderRadius:
-    12,
-
-  minHeight:
-    44,
-
-  background:
-    '#fff1f2',
-
-  color:
-    '#be123c',
-
-  cursor:
-    'pointer',
-
-  fontWeight:
-    700,
-
-  display:
-    'flex',
-
-  alignItems:
-    'center',
-
-  justifyContent:
-    'center',
-
-  gap:
-    8,
+    fontWeight:
+      800,
+  },
 }
 
 
