@@ -62,6 +62,7 @@ import TestAttemptPage from './pages/TestAttemptPage'
 ======================================== */
 
 import TeacherCoursesPage from './pages/TeacherCoursesPage'
+import TeacherHomeroomPage from './pages/TeacherHomeroomPage'
 import TeacherJournalPage from './pages/TeacherJournalPage'
 import TeacherSchedulePage from './pages/TeacherSchedulePage'
 import TeacherTestsPage from './pages/TeacherTestsPage'
@@ -722,6 +723,20 @@ function AppRoutes() {
               ]}
             >
               <TeacherJournalPage />
+            </RequireRoles>
+          }
+        />
+
+
+        <Route
+          path="teacher-homeroom"
+          element={
+            <RequireRoles
+              roles={[
+                ROLES.TEACHER,
+              ]}
+            >
+              <TeacherHomeroomPage />
             </RequireRoles>
           }
         />

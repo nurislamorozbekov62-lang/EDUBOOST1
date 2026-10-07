@@ -1073,9 +1073,6 @@ function createMenus(
 
 /* ========================================
    STUDENT
-
-   Правка: добавлен пункт "AI-помощник"
-   в extra.
 ======================================== */
 
 function createStudentMenu(
@@ -1607,6 +1604,22 @@ function createTeacherMenu(
         BookOpen,
     })
   }
+
+
+  /* --- НОВОЕ: Мой класс (для классного руководителя) --- */
+
+  extra.push({
+    path:
+      '/teacher-homeroom',
+
+    label:
+      t(
+        'navigation.myClass',
+      ),
+
+    icon:
+      Users,
+  })
 
 
   extra.push(

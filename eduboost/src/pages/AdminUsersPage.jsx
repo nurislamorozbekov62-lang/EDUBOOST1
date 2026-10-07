@@ -21,6 +21,7 @@ import {
   Trash2,
   Upload,
   UserPlus,
+  UserRound,
   Users,
   X,
 } from 'lucide-react'
@@ -42,6 +43,10 @@ import {
   reissueStudentActivationCode,
   setSchoolStudentArchived,
 } from '../services/supabaseSchoolAdminService'
+
+import {
+  getStudentParentCode,
+} from '../services/supabaseHomeroomService'
 
 
 const IMPORT_CONCURRENCY = 4
@@ -172,6 +177,26 @@ function AdminUsersPage() {
   const [
     copiedLoginId,
     setCopiedLoginId,
+  ] = useState(null)
+
+
+  /* =========================================================
+     PARENT CODE
+  ========================================================= */
+
+  const [
+    parentCodeModal,
+    setParentCodeModal,
+  ] = useState(null)
+
+  const [
+    copiedParentCode,
+    setCopiedParentCode,
+  ] = useState(false)
+
+  const [
+    loadingParentCodeFor,
+    setLoadingParentCodeFor,
   ] = useState(null)
 
 
@@ -768,6 +793,118 @@ function AdminUsersPage() {
       setError(
         'Не удалось скопировать логин.',
       )
+    }
+  }
+
+
+  /* =========================================================
+     PARENT CODE
+  ========================================================= */
+
+  async function handleOpenParentCode(
+    student,
+  ) {
+    if (
+      !student?.activated ||
+      !student?.userId
+    ) {
+      setError(
+        'Ученик ещё не активирован. Сначала активируйте аккаунт ученика.',
+      )
+
+      return
+    }
+
+
+    try {
+      setError('')
+      setSuccess('')
+
+      setLoadingParentCodeFor(
+        student.id,
+      )
+
+
+      const code =
+        await getStudentParentCode(
+          student.userId,
+        )
+
+
+      if (!code) {
+        throw new Error(
+          'Код не был получен.',
+        )
+      }
+
+
+      setParentCodeModal({
+        fullName:
+          student.fullName,
+
+        className:
+          student.className,
+
+        code,
+      })
+
+      setCopiedParentCode(false)
+    } catch (
+      codeError
+    ) {
+      console.error(
+        'Parent code:',
+        codeError,
+      )
+
+
+      setError(
+        codeError?.message ||
+          'Не удалось получить код для родителя.',
+      )
+    } finally {
+      setLoadingParentCodeFor(
+        null,
+      )
+    }
+  }
+
+
+  function closeParentCodeModal() {
+    setParentCodeModal(null)
+    setCopiedParentCode(false)
+  }
+
+
+  async function copyParentCode() {
+    const code =
+      parentCodeModal?.code
+
+
+    if (!code) {
+      return
+    }
+
+
+    try {
+      await navigator
+        .clipboard
+        .writeText(
+          code,
+        )
+
+
+      setCopiedParentCode(true)
+
+
+      window.setTimeout(
+        () => {
+          setCopiedParentCode(false)
+        },
+        1500,
+      )
+    } catch {
+      setCopiedParentCode(false)
     }
   }
 
@@ -2719,6 +2856,32 @@ function AdminUsersPage() {
                       </button>
 
 
+                      {student.activated &&
+                        !student.isArchived && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOpenParentCode(
+                              student,
+                            )
+                          }
+                          disabled={
+                            loadingParentCodeFor ===
+                            student.id
+                          }
+                        >
+                          <UserRound
+                            size={17}
+                          />
+
+                          {loadingParentCodeFor ===
+                          student.id
+                            ? 'Получаем код...'
+                            : 'Код для родителя'}
+                        </button>
+                      )}
+
+
                       {!student.activated &&
                         !student.isArchived && (
                         <button
@@ -3596,6 +3759,104 @@ function AdminUsersPage() {
                 className="admin-button admin-button-primary admin-full-button"
                 onClick={
                   closeActivationModal
+                }
+              >
+                Готово
+              </button>
+
+            </div>
+
+          </Modal>
+        )}
+
+
+        {/* PARENT CODE MODAL */}
+
+        {parentCodeModal && (
+          <Modal
+            onClose={
+              closeParentCodeModal
+            }
+          >
+
+            <div className="activation-result">
+
+              <div className="activation-result-icon">
+                <UserRound
+                  size={28}
+                />
+              </div>
+
+
+              <h2>
+                Код для родителя
+              </h2>
+
+
+              <p>
+                Передайте этот код родителю.
+                Он вводит его при регистрации
+                на странице входа.
+              </p>
+
+
+              <strong>
+                {
+                  parentCodeModal.fullName
+                }
+              </strong>
+
+
+              <span className="activation-result-class">
+                {
+                  parentCodeModal.className
+                }
+              </span>
+
+
+              <div className="activation-code">
+
+                <small>
+                  Код родителя
+                </small>
+
+
+                <strong>
+                  {
+                    parentCodeModal.code
+                  }
+                </strong>
+
+
+                <button
+                  type="button"
+                  onClick={
+                    copyParentCode
+                  }
+                >
+                  {copiedParentCode ? (
+                    <Check
+                      size={16}
+                    />
+                  ) : (
+                    <Copy
+                      size={16}
+                    />
+                  )}
+
+                  {copiedParentCode
+                    ? 'Скопировано'
+                    : 'Скопировать'}
+                </button>
+
+              </div>
+
+
+              <button
+                type="button"
+                className="admin-button admin-button-primary admin-full-button"
+                onClick={
+                  closeParentCodeModal
                 }
               >
                 Готово

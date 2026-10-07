@@ -8,11 +8,14 @@ import {
   BookOpen,
   ChevronRight,
   GraduationCap,
+  Pencil,
   RefreshCcw,
   Search,
   School,
+  UserCog,
   UserRound,
   Users,
+  X,
 } from 'lucide-react'
 
 import {
@@ -27,6 +30,12 @@ import {
   getAdminSchoolClasses,
   getAdminStudentsByClass,
 } from '../services/supabaseAdminJournalService'
+
+import {
+  getHomeroomInfo,
+  getSchoolTeachersForHomeroom,
+  setHomeroomTeacher,
+} from '../services/supabaseHomeroomService'
 
 
 function AdminClassesPage() {
@@ -45,6 +54,18 @@ function AdminClassesPage() {
     studentsByClass,
     setStudentsByClass,
   ] = useState({})
+
+
+  const [
+    homeroomByClass,
+    setHomeroomByClass,
+  ] = useState({})
+
+
+  const [
+    teachers,
+    setTeachers,
+  ] = useState([])
 
 
   const [
@@ -68,6 +89,40 @@ function AdminClassesPage() {
   const [
     error,
     setError,
+  ] = useState('')
+
+
+  /* =========================================================
+     HOMEROOM MODAL STATE
+  ========================================================= */
+
+  const [
+    homeroomModalOpen,
+    setHomeroomModalOpen,
+  ] = useState(false)
+
+
+  const [
+    homeroomModalClass,
+    setHomeroomModalClass,
+  ] = useState('')
+
+
+  const [
+    selectedTeacherId,
+    setSelectedTeacherId,
+  ] = useState('')
+
+
+  const [
+    savingHomeroom,
+    setSavingHomeroom,
+  ] = useState(false)
+
+
+  const [
+    homeroomError,
+    setHomeroomError,
   ] = useState('')
 
 
@@ -106,34 +161,92 @@ function AdminClassesPage() {
       setError('')
 
 
-      /*
-       * Классы берём через уже существующий
-       * leadership service.
-       *
-       * Не читаем profiles.class_name.
-       */
-      const classRows =
-        await getAdminSchoolClasses(
-          user,
-        )
+      const [
+        classRows,
+        homeroomResult,
+        teacherResult,
+      ] =
+        await Promise.allSettled([
+          getAdminSchoolClasses(
+            user,
+          ),
+
+          getHomeroomInfo(
+            user,
+          ),
+
+          getSchoolTeachersForHomeroom(
+            user.schoolId,
+          ),
+        ])
 
 
       const safeClasses =
+        classRows.status ===
+          'fulfilled' &&
         Array.isArray(
-          classRows,
+          classRows.value,
         )
-          ? classRows
+          ? classRows.value
           : []
 
 
-      /*
-       * Для каждого класса загружаем
-       * официальный текущий roster.
-       *
-       * Используется тот же service,
-       * который уже исправил legacy-учеников
-       * в журналах и отчётах.
-       */
+      if (
+        classRows.status ===
+        'rejected'
+      ) {
+        console.error(
+          'Admin classes:',
+          classRows.reason,
+        )
+      }
+
+
+      /* HOMEROOM MAP */
+
+      if (
+        homeroomResult.status ===
+        'fulfilled'
+      ) {
+        setHomeroomByClass(
+          homeroomResult.value ||
+            {},
+        )
+      } else {
+        console.error(
+          'Admin homeroom:',
+          homeroomResult.reason,
+        )
+
+        setHomeroomByClass({})
+      }
+
+
+      /* TEACHERS */
+
+      if (
+        teacherResult.status ===
+        'fulfilled'
+      ) {
+        setTeachers(
+          Array.isArray(
+            teacherResult.value,
+          )
+            ? teacherResult.value
+            : [],
+        )
+      } else {
+        console.error(
+          'Admin homeroom teachers:',
+          teacherResult.reason,
+        )
+
+        setTeachers([])
+      }
+
+
+      /* STUDENTS */
+
       const results =
         await Promise.allSettled(
           safeClasses.map(
@@ -195,7 +308,6 @@ function AdminClassesPage() {
         safeClasses,
       )
 
-
       setStudentsByClass(
         nextStudents,
       )
@@ -232,6 +344,8 @@ function AdminClassesPage() {
 
       setClasses([])
       setStudentsByClass({})
+      setHomeroomByClass({})
+      setTeachers([])
       setSelectedClass('')
 
 
@@ -241,6 +355,195 @@ function AdminClassesPage() {
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+
+  /* =========================================================
+     HOMEROOM MODAL
+  ========================================================= */
+
+  function openHomeroomModal(
+    className,
+  ) {
+    const info =
+      homeroomByClass[
+        className
+      ]
+
+
+    if (!info?.classId) {
+      setError(
+        'Класс не найден в базе. Обновите данные.',
+      )
+
+      return
+    }
+
+
+    setHomeroomModalClass(
+      className,
+    )
+
+    setSelectedTeacherId(
+      info.teacherId ||
+        '',
+    )
+
+    setHomeroomError('')
+    setHomeroomModalOpen(true)
+  }
+
+
+  function closeHomeroomModal() {
+    if (savingHomeroom) {
+      return
+    }
+
+    setHomeroomModalOpen(
+      false,
+    )
+
+    setHomeroomModalClass('')
+    setSelectedTeacherId('')
+    setHomeroomError('')
+  }
+
+
+  async function handleSaveHomeroom() {
+    if (!homeroomModalClass) {
+      return
+    }
+
+
+    const info =
+      homeroomByClass[
+        homeroomModalClass
+      ]
+
+
+    if (!info?.classId) {
+      setHomeroomError(
+        'Класс не найден в базе.',
+      )
+
+      return
+    }
+
+
+    try {
+      setSavingHomeroom(
+        true,
+      )
+
+      setHomeroomError('')
+
+
+      await setHomeroomTeacher(
+        info.classId,
+        selectedTeacherId ||
+          null,
+      )
+
+
+      setHomeroomModalOpen(
+        false,
+      )
+
+      setHomeroomModalClass('')
+      setSelectedTeacherId('')
+
+
+      await loadData()
+    } catch (
+      saveError
+    ) {
+      console.error(
+        'Save homeroom:',
+        saveError,
+      )
+
+
+      setHomeroomError(
+        saveError?.message ||
+          'Не удалось сохранить',
+      )
+    } finally {
+      setSavingHomeroom(
+        false,
+      )
+    }
+  }
+
+
+  async function handleClearHomeroom() {
+    if (!homeroomModalClass) {
+      return
+    }
+
+
+    const info =
+      homeroomByClass[
+        homeroomModalClass
+      ]
+
+
+    if (!info?.classId) {
+      return
+    }
+
+
+    const confirmed =
+      window.confirm(
+        `Снять классного руководителя с «${homeroomModalClass}»?`,
+      )
+
+
+    if (!confirmed) {
+      return
+    }
+
+
+    try {
+      setSavingHomeroom(
+        true,
+      )
+
+      setHomeroomError('')
+
+
+      await setHomeroomTeacher(
+        info.classId,
+        null,
+      )
+
+
+      setHomeroomModalOpen(
+        false,
+      )
+
+      setHomeroomModalClass('')
+      setSelectedTeacherId('')
+
+
+      await loadData()
+    } catch (
+      clearError
+    ) {
+      console.error(
+        'Clear homeroom:',
+        clearError,
+      )
+
+
+      setHomeroomError(
+        clearError?.message ||
+          'Не удалось снять',
+      )
+    } finally {
+      setSavingHomeroom(
+        false,
+      )
     }
   }
 
@@ -788,6 +1091,105 @@ function AdminClassesPage() {
           </div>
 
 
+          {/* =================================================
+              HOMEROOM BLOCK
+          ================================================= */}
+
+          {selectedClass &&
+            homeroomByClass[
+              selectedClass
+            ] && (
+            <div
+              style={
+                homeroomBlockStyle
+              }
+            >
+
+              <div
+                style={
+                  homeroomIconStyle
+                }
+              >
+                <UserCog
+                  size={19}
+                />
+              </div>
+
+
+              <div
+                style={
+                  homeroomInfoStyle
+                }
+              >
+
+                <span
+                  style={
+                    homeroomEyebrowStyle
+                  }
+                >
+                  Классный руководитель
+                </span>
+
+
+                {homeroomByClass[
+                  selectedClass
+                ]?.teacherName ? (
+                  <strong
+                    style={
+                      homeroomNameStyle
+                    }
+                  >
+                    {
+                      homeroomByClass[
+                        selectedClass
+                      ]
+                        .teacherName
+                    }
+                  </strong>
+                ) : (
+                  <span
+                    style={
+                      homeroomEmptyStyle
+                    }
+                  >
+                    Не назначен
+                  </span>
+                )}
+
+              </div>
+
+
+              <button
+                type="button"
+                onClick={() =>
+                  openHomeroomModal(
+                    selectedClass,
+                  )
+                }
+                disabled={
+                  loading
+                }
+                style={
+                  homeroomButtonStyle
+                }
+              >
+
+                <Pencil
+                  size={15}
+                />
+
+                {homeroomByClass[
+                  selectedClass
+                ]?.teacherName
+                  ? 'Сменить'
+                  : 'Назначить'}
+
+              </button>
+
+            </div>
+          )}
+
+
           {!selectedClass ? (
             <div
               style={
@@ -995,6 +1397,228 @@ function AdminClassesPage() {
         </section>
 
       </div>
+
+
+      {/* =====================================================
+          HOMEROOM MODAL
+      ===================================================== */}
+
+      {homeroomModalOpen && (
+        <div
+          style={
+            modalOverlayStyle
+          }
+          onClick={
+            closeHomeroomModal
+          }
+        >
+
+          <div
+            style={
+              modalCardStyle
+            }
+            onClick={(
+              event,
+            ) =>
+              event.stopPropagation()
+            }
+          >
+
+            <div
+              style={
+                modalHeaderStyle
+              }
+            >
+
+              <div>
+
+                <p
+                  style={
+                    modalEyebrowStyle
+                  }
+                >
+                  Класс{' '}
+                  {
+                    homeroomModalClass
+                  }
+                </p>
+
+                <h3
+                  style={
+                    modalTitleStyle
+                  }
+                >
+                  Назначить классного
+                  руководителя
+                </h3>
+
+              </div>
+
+
+              <button
+                type="button"
+                onClick={
+                  closeHomeroomModal
+                }
+                disabled={
+                  savingHomeroom
+                }
+                style={
+                  modalCloseStyle
+                }
+                aria-label="Закрыть"
+              >
+
+                <X
+                  size={18}
+                />
+
+              </button>
+
+            </div>
+
+
+            <label
+              style={
+                modalFieldStyle
+              }
+            >
+
+              <span>
+                Учитель
+              </span>
+
+
+              <select
+                value={
+                  selectedTeacherId
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSelectedTeacherId(
+                    event.target.value,
+                  )
+                }
+                disabled={
+                  savingHomeroom ||
+                  teachers.length ===
+                    0
+                }
+                style={
+                  modalSelectStyle
+                }
+              >
+
+                <option value="">
+                  {teachers.length === 0
+                    ? 'В школе нет учителей'
+                    : '— Не выбран —'}
+                </option>
+
+
+                {teachers.map(
+                  (
+                    teacher,
+                  ) => (
+                    <option
+                      key={
+                        teacher.id
+                      }
+                      value={
+                        teacher.id
+                      }
+                    >
+                      {teacher.name}
+                      {teacher.position
+                        ? ` · ${teacher.position}`
+                        : ''}
+                    </option>
+                  ),
+                )}
+
+              </select>
+
+            </label>
+
+
+            {homeroomError && (
+              <div
+                style={
+                  modalErrorStyle
+                }
+              >
+                {homeroomError}
+              </div>
+            )}
+
+
+            <div
+              style={
+                modalActionsStyle
+              }
+            >
+
+              {homeroomByClass[
+                homeroomModalClass
+              ]?.teacherId && (
+                <button
+                  type="button"
+                  onClick={
+                    handleClearHomeroom
+                  }
+                  disabled={
+                    savingHomeroom
+                  }
+                  style={
+                    modalClearButtonStyle
+                  }
+                >
+                  Снять
+                </button>
+              )}
+
+
+              <button
+                type="button"
+                onClick={
+                  closeHomeroomModal
+                }
+                disabled={
+                  savingHomeroom
+                }
+                style={
+                  modalCancelButtonStyle
+                }
+              >
+                Отмена
+              </button>
+
+
+              <button
+                type="button"
+                onClick={
+                  handleSaveHomeroom
+                }
+                disabled={
+                  savingHomeroom ||
+                  !selectedTeacherId
+                }
+                style={
+                  modalSaveButtonStyle
+                }
+              >
+                {savingHomeroom
+                  ? 'Сохраняем...'
+                  : 'Назначить'}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
     </div>
   )
@@ -1556,6 +2180,467 @@ const searchInputStyle = {
 }
 
 
+/* =========================================================
+   HOMEROOM BLOCK STYLES
+========================================================= */
+
+const homeroomBlockStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    12,
+
+  padding:
+    12,
+
+  marginBottom:
+    14,
+
+  border:
+    '1px solid #dbeafe',
+
+  borderRadius:
+    14,
+
+  background:
+    '#f8fbff',
+}
+
+
+const homeroomIconStyle = {
+  width:
+    40,
+
+  height:
+    40,
+
+  flexShrink:
+    0,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  borderRadius:
+    12,
+
+  background:
+    '#eaf3ff',
+
+  color:
+    '#2563eb',
+}
+
+
+const homeroomInfoStyle = {
+  flex:
+    1,
+
+  minWidth:
+    0,
+}
+
+
+const homeroomEyebrowStyle = {
+  display:
+    'block',
+
+  marginBottom:
+    3,
+
+  color:
+    '#64748b',
+
+  fontSize:
+    11,
+
+  fontWeight:
+    700,
+}
+
+
+const homeroomNameStyle = {
+  display:
+    'block',
+
+  color:
+    '#102343',
+
+  fontSize:
+    14,
+
+  fontWeight:
+    800,
+}
+
+
+const homeroomEmptyStyle = {
+  display:
+    'block',
+
+  color:
+    '#94a3b8',
+
+  fontSize:
+    13,
+
+  fontStyle:
+    'italic',
+}
+
+
+const homeroomButtonStyle = {
+  display:
+    'inline-flex',
+
+  alignItems:
+    'center',
+
+  gap:
+    6,
+
+  minHeight:
+    38,
+
+  padding:
+    '0 12px',
+
+  border:
+    '1px solid #bfdbfe',
+
+  borderRadius:
+    10,
+
+  background:
+    '#eff6ff',
+
+  color:
+    '#1d4ed8',
+
+  fontWeight:
+    700,
+
+  fontSize:
+    12,
+
+  cursor:
+    'pointer',
+}
+
+
+/* =========================================================
+   MODAL STYLES
+========================================================= */
+
+const modalOverlayStyle = {
+  position:
+    'fixed',
+
+  inset:
+    0,
+
+  zIndex:
+    2000,
+
+  display:
+    'flex',
+
+  alignItems:
+    'center',
+
+  justifyContent:
+    'center',
+
+  padding:
+    18,
+
+  background:
+    'rgba(15, 30, 55, 0.48)',
+}
+
+
+const modalCardStyle = {
+  width:
+    '100%',
+
+  maxWidth:
+    460,
+
+  padding:
+    22,
+
+  background:
+    '#ffffff',
+
+  borderRadius:
+    20,
+
+  boxShadow:
+    '0 24px 70px rgba(15, 42, 82, 0.24)',
+}
+
+
+const modalHeaderStyle = {
+  display:
+    'flex',
+
+  alignItems:
+    'flex-start',
+
+  justifyContent:
+    'space-between',
+
+  gap:
+    12,
+
+  marginBottom:
+    18,
+}
+
+
+const modalEyebrowStyle = {
+  margin:
+    0,
+
+  color:
+    '#1267e8',
+
+  fontSize:
+    11,
+
+  fontWeight:
+    800,
+
+  textTransform:
+    'uppercase',
+}
+
+
+const modalTitleStyle = {
+  margin:
+    '4px 0 0',
+
+  color:
+    '#102343',
+
+  fontSize:
+    18,
+}
+
+
+const modalCloseStyle = {
+  width:
+    34,
+
+  height:
+    34,
+
+  display:
+    'grid',
+
+  placeItems:
+    'center',
+
+  padding:
+    0,
+
+  border:
+    0,
+
+  borderRadius:
+    10,
+
+  background:
+    '#f1f5f9',
+
+  color:
+    '#526b8a',
+
+  cursor:
+    'pointer',
+}
+
+
+const modalFieldStyle = {
+  display:
+    'flex',
+
+  flexDirection:
+    'column',
+
+  gap:
+    6,
+}
+
+
+const modalSelectStyle = {
+  width:
+    '100%',
+
+  minHeight:
+    44,
+
+  padding:
+    '0 12px',
+
+  border:
+    '1px solid #dbe2ea',
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+
+  outline:
+    'none',
+
+  fontSize:
+    14,
+}
+
+
+const modalErrorStyle = {
+  marginTop:
+    12,
+
+  padding:
+    '10px 12px',
+
+  borderRadius:
+    10,
+
+  background:
+    '#fff1f1',
+
+  border:
+    '1px solid #ffd2d2',
+
+  color:
+    '#b42318',
+
+  fontSize:
+    12,
+}
+
+
+const modalActionsStyle = {
+  display:
+    'flex',
+
+  justifyContent:
+    'flex-end',
+
+  gap:
+    8,
+
+  marginTop:
+    18,
+}
+
+
+const modalClearButtonStyle = {
+  minHeight:
+    42,
+
+  padding:
+    '0 14px',
+
+  border:
+    '1px solid #fecaca',
+
+  borderRadius:
+    11,
+
+  background:
+    '#fff1f1',
+
+  color:
+    '#b42318',
+
+  fontWeight:
+    700,
+
+  fontSize:
+    13,
+
+  cursor:
+    'pointer',
+
+  marginRight:
+    'auto',
+}
+
+
+const modalCancelButtonStyle = {
+  minHeight:
+    42,
+
+  padding:
+    '0 14px',
+
+  border:
+    '1px solid #dbe2ea',
+
+  borderRadius:
+    11,
+
+  background:
+    '#ffffff',
+
+  color:
+    '#475569',
+
+  fontWeight:
+    700,
+
+  fontSize:
+    13,
+
+  cursor:
+    'pointer',
+}
+
+
+const modalSaveButtonStyle = {
+  minHeight:
+    42,
+
+  padding:
+    '0 16px',
+
+  border:
+    0,
+
+  borderRadius:
+    11,
+
+  background:
+    '#2563eb',
+
+  color:
+    '#ffffff',
+
+  fontWeight:
+    700,
+
+  fontSize:
+    13,
+
+  cursor:
+    'pointer',
+}
+
+/* =========================================================
+   TABLE STYLES
+========================================================= */
+
 const tableWrapperStyle = {
   width:
     '100%',
@@ -1768,6 +2853,5 @@ const emptyStateStyle = {
   color:
     '#64748b',
 }
-
 
 export default AdminClassesPage
